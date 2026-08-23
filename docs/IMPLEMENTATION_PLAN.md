@@ -373,9 +373,7 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
 ## 13. オープン課題・要検討事項
 
 - **netstandard2.0 マルチターゲット化のタイミング**: 将来、外部 Roslyn Analyzer/Source Generator プロジェクトが TkHLSL を参照する際、Analyzer/Generator プロジェクトは netstandard2.0 をターゲットにする必要があるため、TkHLSL 自身も netstandard2.0 でビルド可能でなければ参照できない。
-  - 案A: Phase 0 で先に `<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>` にしておき、API 互換性を最初から強制する
-  - 案B: Phase 5 まで単一 TFM で素早くイテレーションし、Phase 6 でまとめて対応する
-  - → 開発者自身が着手時に決定する
+  - → **決定（Phase 0 で対応）**: 案Aを採用。`TkHLSL/TkHLSL.csproj` を `<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>` にマルチターゲット化済み。現状の `Arena`/`Handle` 実装は netstandard2.0 の BCL のみで警告なくビルドできている。以後のフェーズで netstandard2.0 に存在しない API（`IsExternalInit`/`required`/`NotNullWhen` 等）を使う場合は都度ポリフィル（`PolySharp` 等）の要否を検討する
 - **LangVersion 既定値の罠**: `TargetFramework=netstandard2.0` の場合、明示指定しない限り LangVersion が暗黙的に古いバージョン（C# 7.3 相当）に固定される。record 型やパターンマッチ等を使う場合は `<LangVersion>` の明示指定が必須
 - **BCL ギャップとポリフィル**: netstandard2.0 には `IsExternalInit`, `required` 属性, `NotNullWhen` 等が存在しない。`PolySharp`（ランタイム依存なしのソースジェネレータ型ポリフィル）の採用を検討
 - **依存パッケージの最小化**: `System.Memory`/`System.Text.Json` 等の追加パッケージ導入は、Analyzer NuGet パッケージ内でのアセンブリバージョン競合リスクを増やすため、可能な限り避ける
@@ -383,10 +381,3 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
 - **`Handle<T>`/`Arena<T>` の実装形態**: `Handle<T>` は `readonly struct`（値型・軽量）とする。`Arena<T>` を `class`（参照型）にするか `struct` にするかは要検討（naga の Rust 実装は所有権の都合で `Arena<T>` 自体は値だが `Module` に埋め込まれる形。C# では `Module` を `class` にして `Arena<T>` フィールドを持たせるのが自然）
 - **テストプロジェクトは対象外**: `tests/TkHLSL.Tests` は net10.0 のみでよく、マルチターゲット化はライブラリ本体のみに適用する
 - **Unity 組込み include の扱い**: `UnityCG.cginc` 等をバンドルするか、`IIncludeResolver` を通じて完全に外部委譲のままにするかは未決定
-
-## 14. 変更履歴
-
-| 日付 | 変更概要 |
-|---|---|
-| 2026-08-23 | 初版作成（Phase 0〜7 のフェーズ分割、アーキテクチャ、公開API方針を策定） |
-| 2026-08-23 | naga（gfx-rs/wgpu）のアーキテクチャを参考に全面改訂。Arena/Handle パターン、Module/GlobalVariable/EntryPoint/Function という IR 命名を採用。旧 Phase4（関数本体スキャン）と旧 Phase5（呼び出しグラフ解決）を naga の Analyzer に倣い単一パスの Phase4「Analyzer」に統合し、全体を 8 フェーズから 7 フェーズに整理 |
