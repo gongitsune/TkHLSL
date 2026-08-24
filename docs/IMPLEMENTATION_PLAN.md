@@ -382,3 +382,4 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
 - **`Handle<T>`/`Arena<T>` の実装形態**: `Handle<T>` は `readonly struct`（値型・軽量）とする。`Arena<T>` を `class`（参照型）にするか `struct` にするかは要検討（naga の Rust 実装は所有権の都合で `Arena<T>` 自体は値だが `Module` に埋め込まれる形。C# では `Module` を `class` にして `Arena<T>` フィールドを持たせるのが自然）
 - **テストプロジェクトは対象外**: `tests/TkHLSL.Tests` は net10.0 のみでよく、マルチターゲット化はライブラリ本体のみに適用する
 - **Unity 組込み include の扱い**: `UnityCG.cginc` 等をバンドルするか、`IIncludeResolver` を通じて完全に外部委譲のままにするかは未決定
+  - → **決定（Phase 2 で対応）**: `Preprocessing/Preprocessor.cs` は `#include "path"` を検出すると `IIncludeResolver.TryResolve` を呼び出し、解決可能かどうかのみを検証する（解決失敗・`IncludeResolver` 未設定は Diagnostic）。解決できたファイルの内容はトークン化・出力トークン列への合成を行わない。理由: `Token`/`TextSpan` は「単一の `source` 文字列に対するオフセット」という前提で設計されており（`TokenExtensions.GetSpan`/`GetText` は呼び出し側が渡す1つの `source` を使う）、複数ファイルのトークンを1つの出力列に混在させるには各トークンがどのソース文字列に属するかを追加で保持する必要があるが、これは `Token` を2 int から肥大化させ Phase 1 の設計方針（トークンあたり無アロケーション・軽量）に反する。複数ファイルにまたがる本格的な include 展開は将来のオープン課題として残す
