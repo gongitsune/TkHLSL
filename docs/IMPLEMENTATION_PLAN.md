@@ -376,6 +376,7 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
   - → **決定（Phase 0 で対応）**: 案Aを採用。`TkHLSL/TkHLSL.csproj` を `<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>` にマルチターゲット化済み。現状の `Arena`/`Handle` 実装は netstandard2.0 の BCL のみで警告なくビルドできている。以後のフェーズで netstandard2.0 に存在しない API（`IsExternalInit`/`required`/`NotNullWhen` 等）を使う場合は都度ポリフィル（`PolySharp` 等）の要否を検討する
 - **LangVersion 既定値の罠**: `TargetFramework=netstandard2.0` の場合、明示指定しない限り LangVersion が暗黙的に古いバージョン（C# 7.3 相当）に固定される。record 型やパターンマッチ等を使う場合は `<LangVersion>` の明示指定が必須
 - **BCL ギャップとポリフィル**: netstandard2.0 には `IsExternalInit`, `required` 属性, `NotNullWhen` 等が存在しない。`PolySharp`（ランタイム依存なしのソースジェネレータ型ポリフィル）の採用を検討
+  - → **決定（Phase 3 で対応）**: `TkHLSL/TkHLSL.csproj` に `PolySharp` を両 TFM 共通で追加（`PrivateAssets="all"`、ビルド時のみ有効なポリフィルでランタイム依存なし）。`Ir/*`（`TypeInfo`/`GlobalVariable`/`Function`/`EntryPoint`）で `record` 型（`IsExternalInit` が必要）を使うため、Phase 3 で実際にギャップに到達し採用を確定した
 - **依存パッケージの最小化**: `System.Text.Json` 等の追加パッケージ導入は、Analyzer NuGet パッケージ内でのアセンブリバージョン競合リスクを増やすため、可能な限り避ける
   - → **決定（Phase 1 で対応）**: `System.Memory` は例外的に許可し採用。`TkHLSL/TkHLSL.csproj` の `netstandard2.0` ターゲットのみに `Condition="'$(TargetFramework)' == 'netstandard2.0'"` でスコープして参照（`net10.0` はビルトインの `Span<T>` を使うため追加参照不要）。Lexer は `ReadOnlySpan<char>` 上で走査し、コメント・文字列リテラルの終端検索に `IndexOf`/`IndexOfAny` のベクトル化実装を利用してアロケーションと走査コストを削減している
 - **カルチャ非依存性**: 文字列比較は `Ordinal` 系比較を用いる

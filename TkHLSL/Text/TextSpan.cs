@@ -3,17 +3,11 @@ namespace TkHLSL.Text;
 /// <summary>
 /// A half-open [Start, Start+Length) range of character offsets into a source text.
 /// </summary>
-public readonly struct TextSpan : IEquatable<TextSpan>
+public readonly struct TextSpan(int start, int length) : IEquatable<TextSpan>
 {
-    public TextSpan(int start, int length)
-    {
-        Start = start;
-        Length = length;
-    }
+    public int Start { get; } = start;
 
-    public int Start { get; }
-
-    public int Length { get; }
+    public int Length { get; } = length;
 
     public int End => Start + Length;
 

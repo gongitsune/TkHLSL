@@ -6,20 +6,13 @@ namespace TkHLSL.Diagnostics;
 /// TkHLSL's sole diagnostic representation, used across every phase (Lexer, Preprocessor,
 /// Parser, public API). Deliberately independent of <c>Microsoft.CodeAnalysis.Diagnostic</c>.
 /// </summary>
-public readonly struct Diagnostic
+public readonly struct Diagnostic(DiagnosticSeverity severity, string message, TextSpan span)
 {
-    public Diagnostic(DiagnosticSeverity severity, string message, TextSpan span)
-    {
-        Severity = severity;
-        Message = message;
-        Span = span;
-    }
+    public DiagnosticSeverity Severity { get; } = severity;
 
-    public DiagnosticSeverity Severity { get; }
+    public string Message { get; } = message;
 
-    public string Message { get; }
-
-    public TextSpan Span { get; }
+    public TextSpan Span { get; } = span;
 
     public override string ToString() => $"{Severity}: {Message} {Span}";
 }

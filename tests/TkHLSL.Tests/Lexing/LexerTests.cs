@@ -1,3 +1,4 @@
+using TkHLSL.Diagnostics;
 using TkHLSL.Lexing;
 
 namespace TkHLSL.Tests.Lexing;
@@ -40,7 +41,7 @@ public class LexerTests
         const string source = "RWStructuredBuffer buf";
 
         var result = Lexer.Tokenize(source);
-        var identifier = Assert.Single(result.Tokens, t => t.Kind == TokenKind.Identifier && t.Span.Start == 0);
+        var identifier = Assert.Single(result.Tokens, t => t is { Kind: TokenKind.Identifier, Span.Start: 0 });
 
         Assert.True(identifier.GetSpan(source).SequenceEqual("RWStructuredBuffer".AsSpan()));
         Assert.Equal(identifier.GetText(source), identifier.GetSpan(source).ToString());
@@ -92,7 +93,7 @@ public class LexerTests
         var errorToken = Assert.Single(result.Tokens, t => t.Kind == TokenKind.Error);
         Assert.Equal("\"abc", errorToken.GetText(source));
         var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal(TkHLSL.Diagnostics.DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
     }
 
     [Fact]
@@ -240,30 +241,30 @@ public class LexerTests
     public void Tokenize_RepresentativeComputeShader_ProducesNoErrorTokens()
     {
         const string source = """
-            #pragma kernel CSMain
+                              #pragma kernel CSMain
 
-            RWStructuredBuffer<float> _Result : register(u0);
-            Texture2D<float4> _InputTexture : register(t0);
-            SamplerState sampler_InputTexture : register(s0);
+                              RWStructuredBuffer<float> _Result : register(u0);
+                              Texture2D<float4> _InputTexture : register(t0);
+                              SamplerState sampler_InputTexture : register(s0);
 
-            cbuffer Params : register(b0)
-            {
-                float4 _Params;
-                int _Count;
-            };
+                              cbuffer Params : register(b0)
+                              {
+                                  float4 _Params;
+                                  int _Count;
+                              };
 
-            float square(float x)
-            {
-                return x * x;
-            }
+                              float square(float x)
+                              {
+                                  return x * x;
+                              }
 
-            [numthreads(8, 8, 1)]
-            void CSMain(uint3 id : SV_DispatchThreadID)
-            {
-                float4 color = _InputTexture.Sample(sampler_InputTexture, float2(0.5, 0.5));
-                _Result[id.x] = square(color.r) + _Params.x;
-            }
-            """;
+                              [numthreads(8, 8, 1)]
+                              void CSMain(uint3 id : SV_DispatchThreadID)
+                              {
+                                  float4 color = _InputTexture.Sample(sampler_InputTexture, float2(0.5, 0.5));
+                                  _Result[id.x] = square(color.r) + _Params.x;
+                              }
+                              """;
 
         var result = Lexer.Tokenize(source);
 

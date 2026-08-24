@@ -4,35 +4,33 @@ using TkHLSL.Text;
 namespace TkHLSL.Lexing;
 
 /// <summary>
-/// Converts HLSL source text into a flat token stream in a single forward pass.
+///     Converts HLSL source text into a flat token stream in a single forward pass.
 /// </summary>
 /// <remarks>
-/// Allocation policy: tokens carry only a <see cref="TokenKind"/> and a <see cref="TextSpan"/>
-/// (two ints) — no substring is materialized per token, so the scan itself allocates nothing
-/// beyond the backing storage for the returned token/diagnostic lists. The scan runs over a
-/// <see cref="ReadOnlySpan{T}"/> view of the source and uses its vectorized
-/// <see cref="MemoryExtensions.IndexOf(ReadOnlySpan{char}, char)"/>/<c>IndexOfAny</c> overloads to
-/// jump straight to the next delimiter when scanning comments and string literals, instead of
-/// testing one character at a time.
+///     Allocation policy: tokens carry only a <see cref="TokenKind" /> and a <see cref="TextSpan" />
+///     (two ints) — no substring is materialized per token, so the scan itself allocates nothing
+///     beyond the backing storage for the returned token/diagnostic lists. The scan runs over a
+///     <see cref="ReadOnlySpan{T}" /> view of the source and uses its vectorized
+///     <see cref="MemoryExtensions.IndexOf(ReadOnlySpan{char},ReadOnlySpan{char},StringComparison)" />/<c>IndexOfAny</c>
+///     overloads to
+///     jump straight to the next delimiter when scanning comments and string literals, instead of
+///     testing one character at a time.
 /// </remarks>
 public static class Lexer
 {
     public static LexResult Tokenize(string source)
     {
-        if (source is null)
-        {
-            throw new ArgumentNullException(nameof(source));
-        }
+        if (source is null) throw new ArgumentNullException(nameof(source));
 
-        ReadOnlySpan<char> span = source.AsSpan();
+        var span = source.AsSpan();
         var tokens = new List<Token>(Math.Max(16, span.Length / 3));
         List<Diagnostic>? diagnostics = null;
-        int length = span.Length;
-        int pos = 0;
+        var length = span.Length;
+        var pos = 0;
 
         while (pos < length)
         {
-            char c = span[pos];
+            var c = span[pos];
             switch (c)
             {
                 case ' ':
@@ -45,10 +43,7 @@ public static class Lexer
                     pos++;
                     continue;
                 case '\\':
-                    if (TryConsumeLineContinuation(span, ref pos))
-                    {
-                        continue;
-                    }
+                    if (TryConsumeLineContinuation(span, ref pos)) continue;
                     tokens.Add(new Token(TokenKind.Error, new TextSpan(pos, 1)));
                     AddDiagnostic(ref diagnostics, $"予期しない文字 '{c}' です。", pos, 1);
                     pos++;
@@ -117,18 +112,22 @@ public static class Lexer
                         tokens.Add(Single(TokenKind.Dot, pos));
                         pos++;
                     }
+
                     continue;
                 case '+':
-                    tokens.Add(ScanCompound(span, ref pos, '+', TokenKind.Increment, TokenKind.PlusAssign, TokenKind.Plus));
+                    tokens.Add(ScanCompound(span, ref pos, '+', TokenKind.Increment, TokenKind.PlusAssign,
+                        TokenKind.Plus));
                     continue;
                 case '-':
-                    tokens.Add(ScanCompound(span, ref pos, '-', TokenKind.Decrement, TokenKind.MinusAssign, TokenKind.Minus));
+                    tokens.Add(ScanCompound(span, ref pos, '-', TokenKind.Decrement, TokenKind.MinusAssign,
+                        TokenKind.Minus));
                     continue;
                 case '&':
                     tokens.Add(ScanCompound(span, ref pos, '&', TokenKind.AmpAmp, TokenKind.AmpAssign, TokenKind.Amp));
                     continue;
                 case '|':
-                    tokens.Add(ScanCompound(span, ref pos, '|', TokenKind.PipePipe, TokenKind.PipeAssign, TokenKind.Pipe));
+                    tokens.Add(ScanCompound(span, ref pos, '|', TokenKind.PipePipe, TokenKind.PipeAssign,
+                        TokenKind.Pipe));
                     continue;
                 case '*':
                     tokens.Add(ScanMaybeAssign(span, ref pos, TokenKind.StarAssign, TokenKind.Star));
@@ -146,10 +145,12 @@ public static class Lexer
                     tokens.Add(ScanMaybeAssign(span, ref pos, TokenKind.CaretAssign, TokenKind.Caret));
                     continue;
                 case '<':
-                    tokens.Add(ScanShift(span, ref pos, '<', TokenKind.LessEqual, TokenKind.LeftShift, TokenKind.LeftShiftAssign, TokenKind.Less));
+                    tokens.Add(ScanShift(span, ref pos, '<', TokenKind.LessEqual, TokenKind.LeftShift,
+                        TokenKind.LeftShiftAssign, TokenKind.Less));
                     continue;
                 case '>':
-                    tokens.Add(ScanShift(span, ref pos, '>', TokenKind.GreaterEqual, TokenKind.RightShift, TokenKind.RightShiftAssign, TokenKind.Greater));
+                    tokens.Add(ScanShift(span, ref pos, '>', TokenKind.GreaterEqual, TokenKind.RightShift,
+                        TokenKind.RightShiftAssign, TokenKind.Greater));
                     continue;
                 default:
                     if (IsIdentifierStart(c))
@@ -166,6 +167,7 @@ public static class Lexer
                         AddDiagnostic(ref diagnostics, $"予期しない文字 '{c}' です。", pos, 1);
                         pos++;
                     }
+
                     continue;
             }
         }
@@ -180,15 +182,18 @@ public static class Lexer
 
     private static char PeekAt(ReadOnlySpan<char> source, int pos, int offset)
     {
-        int i = pos + offset;
+        var i = pos + offset;
         return i < source.Length ? source[i] : '\0';
     }
 
-    private static Token Single(TokenKind kind, int pos) => new(kind, new TextSpan(pos, 1));
+    private static Token Single(TokenKind kind, int pos)
+    {
+        return new Token(kind, new TextSpan(pos, 1));
+    }
 
     private static bool TryConsumeLineContinuation(ReadOnlySpan<char> source, ref int pos)
     {
-        char next = PeekAt(source, pos, 1);
+        var next = PeekAt(source, pos, 1);
         if (next == '\n')
         {
             pos += 2;
@@ -205,12 +210,13 @@ public static class Lexer
     }
 
     /// <summary>
-    /// Handles operators of the shape "cc" (doubled), "c=" (compound assign), or "c" (plain) —
-    /// covers <c>+ ++ +=</c>, <c>- -- -=</c>, <c>&amp; &amp;&amp; &amp;=</c>, <c>| || |=</c>.
+    ///     Handles operators of the shape "cc" (doubled), "c=" (compound assign), or "c" (plain) —
+    ///     covers <c>+ ++ +=</c>, <c>- -- -=</c>, <c>&amp; &amp;&amp; &amp;=</c>, <c>| || |=</c>.
     /// </summary>
-    private static Token ScanCompound(ReadOnlySpan<char> source, ref int pos, char self, TokenKind doubled, TokenKind assign, TokenKind plain)
+    private static Token ScanCompound(ReadOnlySpan<char> source, ref int pos, char self, TokenKind doubled,
+        TokenKind assign, TokenKind plain)
     {
-        char next = PeekAt(source, pos, 1);
+        var next = PeekAt(source, pos, 1);
         if (next == self)
         {
             var token = new Token(doubled, new TextSpan(pos, 2));
@@ -231,7 +237,8 @@ public static class Lexer
     }
 
     /// <summary>Handles operators of the shape "c=" or "c" — covers <c>* % = ! ^</c>.</summary>
-    private static Token ScanMaybeAssign(ReadOnlySpan<char> source, ref int pos, TokenKind assignKind, TokenKind plainKind)
+    private static Token ScanMaybeAssign(ReadOnlySpan<char> source, ref int pos, TokenKind assignKind,
+        TokenKind plainKind)
     {
         if (PeekAt(source, pos, 1) == '=')
         {
@@ -245,10 +252,14 @@ public static class Lexer
         return single;
     }
 
-    /// <summary>Handles shift-capable operators — covers <c>&lt; &lt;= &lt;&lt; &lt;&lt;=</c> and <c>&gt; &gt;= &gt;&gt; &gt;&gt;=</c>.</summary>
-    private static Token ScanShift(ReadOnlySpan<char> source, ref int pos, char self, TokenKind equalKind, TokenKind repeatKind, TokenKind repeatAssignKind, TokenKind plainKind)
+    /// <summary>
+    ///     Handles shift-capable operators — covers <c>&lt; &lt;= &lt;&lt; &lt;&lt;=</c> and
+    ///     <c>&gt; &gt;= &gt;&gt; &gt;&gt;=</c>.
+    /// </summary>
+    private static Token ScanShift(ReadOnlySpan<char> source, ref int pos, char self, TokenKind equalKind,
+        TokenKind repeatKind, TokenKind repeatAssignKind, TokenKind plainKind)
     {
-        char next = PeekAt(source, pos, 1);
+        var next = PeekAt(source, pos, 1);
         if (next == '=')
         {
             var token = new Token(equalKind, new TextSpan(pos, 2));
@@ -277,29 +288,26 @@ public static class Lexer
 
     private static Token ScanSlashOrComment(ReadOnlySpan<char> source, ref int pos, ref List<Diagnostic>? diagnostics)
     {
-        char next = PeekAt(source, pos, 1);
+        var next = PeekAt(source, pos, 1);
         if (next == '/')
         {
-            int start = pos;
-            int contentStart = pos + 2;
-            int relativeNewLine = source.Slice(contentStart).IndexOf('\n');
+            var start = pos;
+            var contentStart = pos + 2;
+            var relativeNewLine = source.Slice(contentStart).IndexOf('\n');
             pos = relativeNewLine < 0 ? source.Length : contentStart + relativeNewLine;
             return new Token(TokenKind.LineComment, new TextSpan(start, pos - start));
         }
 
-        if (next == '*')
-        {
-            return ScanBlockComment(source, ref pos, ref diagnostics);
-        }
+        if (next == '*') return ScanBlockComment(source, ref pos, ref diagnostics);
 
         return ScanMaybeAssign(source, ref pos, TokenKind.SlashAssign, TokenKind.Slash);
     }
 
     private static Token ScanBlockComment(ReadOnlySpan<char> source, ref int pos, ref List<Diagnostic>? diagnostics)
     {
-        int start = pos;
-        int contentStart = pos + 2; // skip "/*"
-        int relativeEnd = source.Slice(contentStart).IndexOf("*/".AsSpan());
+        var start = pos;
+        var contentStart = pos + 2; // skip "/*"
+        var relativeEnd = source.Slice(contentStart).IndexOf("*/".AsSpan());
         if (relativeEnd >= 0)
         {
             pos = contentStart + relativeEnd + 2;
@@ -313,13 +321,13 @@ public static class Lexer
 
     private static Token ScanString(ReadOnlySpan<char> source, ref int pos, ref List<Diagnostic>? diagnostics)
     {
-        int start = pos;
-        int length = source.Length;
+        var start = pos;
+        var length = source.Length;
         pos++; // skip opening quote
 
         while (pos < length)
         {
-            int relative = source.Slice(pos).IndexOfAny('"', '\\', '\n');
+            var relative = source.Slice(pos).IndexOfAny('"', '\\', '\n');
             if (relative < 0)
             {
                 pos = length;
@@ -327,17 +335,14 @@ public static class Lexer
             }
 
             pos += relative;
-            char found = source[pos];
+            var found = source[pos];
             if (found == '"')
             {
                 pos++;
                 return new Token(TokenKind.StringLiteral, new TextSpan(start, pos - start));
             }
 
-            if (found == '\n')
-            {
-                break;
-            }
+            if (found == '\n') break;
 
             // found == '\\': skip the escaped character (if any) and keep scanning.
             pos += pos + 1 < length ? 2 : 1;
@@ -349,79 +354,58 @@ public static class Lexer
 
     private static Token ScanIdentifier(ReadOnlySpan<char> source, ref int pos)
     {
-        int start = pos;
-        int length = source.Length;
+        var start = pos;
+        var length = source.Length;
         pos++;
-        while (pos < length && IsIdentifierPart(source[pos]))
-        {
-            pos++;
-        }
+        while (pos < length && IsIdentifierPart(source[pos])) pos++;
 
         return new Token(TokenKind.Identifier, new TextSpan(start, pos - start));
     }
 
     private static Token ScanNumber(ReadOnlySpan<char> source, ref int pos)
     {
-        int start = pos;
-        int length = source.Length;
-        bool isFloat = false;
+        var start = pos;
+        var length = source.Length;
+        var isFloat = false;
 
-        if (source[pos] == '0' && (PeekAt(source, pos, 1) is 'x' or 'X'))
+        if (source[pos] == '0' && PeekAt(source, pos, 1) is 'x' or 'X')
         {
             pos += 2;
-            while (pos < length && IsHexDigit(source[pos]))
-            {
-                pos++;
-            }
+            while (pos < length && IsHexDigit(source[pos])) pos++;
 
-            if (pos < length && (source[pos] is 'u' or 'U'))
-            {
-                pos++;
-            }
+            if (pos < length && source[pos] is 'u' or 'U') pos++;
 
             return new Token(TokenKind.IntLiteral, new TextSpan(start, pos - start));
         }
 
-        while (pos < length && IsDigit(source[pos]))
-        {
-            pos++;
-        }
+        while (pos < length && IsDigit(source[pos])) pos++;
 
         if (pos < length && source[pos] == '.')
         {
             isFloat = true;
             pos++;
-            while (pos < length && IsDigit(source[pos]))
-            {
-                pos++;
-            }
+            while (pos < length && IsDigit(source[pos])) pos++;
         }
 
-        if (pos < length && (source[pos] is 'e' or 'E'))
+        if (pos < length && source[pos] is 'e' or 'E')
         {
-            int expDigitsStart = pos + 1;
-            if (expDigitsStart < length && (source[expDigitsStart] is '+' or '-'))
-            {
-                expDigitsStart++;
-            }
+            var expDigitsStart = pos + 1;
+            if (expDigitsStart < length && source[expDigitsStart] is '+' or '-') expDigitsStart++;
 
             if (expDigitsStart < length && IsDigit(source[expDigitsStart]))
             {
                 isFloat = true;
                 pos = expDigitsStart;
-                while (pos < length && IsDigit(source[pos]))
-                {
-                    pos++;
-                }
+                while (pos < length && IsDigit(source[pos])) pos++;
             }
         }
 
-        if (pos < length && (source[pos] is 'f' or 'F' or 'h' or 'H'))
+        if (pos < length && source[pos] is 'f' or 'F' or 'h' or 'H')
         {
             isFloat = true;
             pos++;
         }
-        else if (!isFloat && pos < length && (source[pos] is 'u' or 'U'))
+        else if (!isFloat && pos < length && source[pos] is 'u' or 'U')
         {
             pos++;
         }
@@ -429,17 +413,29 @@ public static class Lexer
         return new Token(isFloat ? TokenKind.FloatLiteral : TokenKind.IntLiteral, new TextSpan(start, pos - start));
     }
 
-    private static bool IsIdentifierStart(char c) => c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    private static bool IsIdentifierStart(char c)
+    {
+        return c is '_' or >= 'a' and <= 'z' or >= 'A' and <= 'Z';
+    }
 
-    private static bool IsIdentifierPart(char c) => IsIdentifierStart(c) || IsDigit(c);
+    private static bool IsIdentifierPart(char c)
+    {
+        return IsIdentifierStart(c) || IsDigit(c);
+    }
 
-    private static bool IsDigit(char c) => c >= '0' && c <= '9';
+    private static bool IsDigit(char c)
+    {
+        return c is >= '0' and <= '9';
+    }
 
-    private static bool IsHexDigit(char c) => IsDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    private static bool IsHexDigit(char c)
+    {
+        return IsDigit(c) || c is >= 'a' and <= 'f' || c is >= 'A' and <= 'F';
+    }
 
     private static void AddDiagnostic(ref List<Diagnostic>? diagnostics, string message, int start, int length)
     {
-        diagnostics ??= new List<Diagnostic>();
+        diagnostics ??= [];
         diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, new TextSpan(start, length)));
     }
 }

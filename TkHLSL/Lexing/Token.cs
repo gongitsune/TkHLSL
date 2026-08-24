@@ -7,17 +7,11 @@ namespace TkHLSL.Lexing;
 /// Token text is never materialized during lexing — callers slice the original source string via
 /// <see cref="Span"/> on demand, so tokenizing does not allocate a string per token.
 /// </summary>
-public readonly struct Token
+public readonly struct Token(TokenKind kind, TextSpan span)
 {
-    public Token(TokenKind kind, TextSpan span)
-    {
-        Kind = kind;
-        Span = span;
-    }
+    public TokenKind Kind { get; } = kind;
 
-    public TokenKind Kind { get; }
-
-    public TextSpan Span { get; }
+    public TextSpan Span { get; } = span;
 
     public override string ToString() => $"{Kind}{Span}";
 }
