@@ -52,4 +52,16 @@ public class ArenaTests
 
         Assert.Equal([1, 2, 3], arena.ToList());
     }
+
+    [Fact]
+    public void WithHandles_YieldsEachItemPairedWithTheHandleAddReturned()
+    {
+        var arena = new Arena<string>();
+        var first = arena.Add("a");
+        var second = arena.Add("b");
+
+        var pairs = arena.WithHandles().ToList();
+
+        Assert.Equal([(first, "a"), (second, "b")], pairs);
+    }
 }

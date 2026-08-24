@@ -22,4 +22,15 @@ public sealed class Arena<T> : IEnumerable<T>
     public IEnumerator<T> GetEnumerator() => _items.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    /// <summary>
+    /// Enumerates every item paired with the <see cref="Handle{T}"/> that <see cref="Add"/> returned
+    /// for it (mirrors naga's <c>Arena::iter()</c>; see docs/IMPLEMENTATION_PLAN.md §2.1) — the only
+    /// way to recover a <see cref="Handle{T}"/> from outside this assembly, since its constructor is
+    /// internal.
+    /// </summary>
+    public IEnumerable<(Handle<T> Handle, T Value)> WithHandles()
+    {
+        for (var i = 0; i < _items.Count; i++) yield return (new Handle<T>(i), _items[i]);
+    }
 }

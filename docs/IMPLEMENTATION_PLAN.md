@@ -225,7 +225,7 @@ tests/
 ### 7.2 解析結果（naga の ModuleInfo/FunctionInfo 由来の命名を採用）
 
 - `ModuleInfo` — `Analysis/ModuleInfo.cs`。`Functions: IReadOnlyList<FunctionInfo>`, `EntryPoints: IReadOnlyList<FunctionInfo>`
-- `FunctionInfo` — `Analysis/FunctionInfo.cs`。`GlobalUses: IReadOnlySet<Handle<GlobalVariable>>`。naga の `FunctionInfo` と異なり、`Uniformity`/`sampling_set`/`may_kill` などコード生成向けの情報は持たない（§2.4 の非採用項目）
+- `FunctionInfo` — `Analysis/FunctionInfo.cs`。`GlobalUses: IReadOnlyCollection<Handle<GlobalVariable>>` ＋ `UsesGlobal(Handle<GlobalVariable>): bool`（`IReadOnlySet<T>` が netstandard2.0 に存在しないための代替、§13 参照）。naga の `FunctionInfo` と異なり、`Uniformity`/`sampling_set`/`may_kill` などコード生成向けの情報は持たない（§2.4 の非採用項目）
 
 ### 7.3 公開 API（外部コンシューマ向けの平易化モデル）
 
@@ -382,5 +382,10 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
 - **カルチャ非依存性**: 文字列比較は `Ordinal` 系比較を用いる
 - **`Handle<T>`/`Arena<T>` の実装形態**: `Handle<T>` は `readonly struct`（値型・軽量）とする。`Arena<T>` を `class`（参照型）にするか `struct` にするかは要検討（naga の Rust 実装は所有権の都合で `Arena<T>` 自体は値だが `Module` に埋め込まれる形。C# では `Module` を `class` にして `Arena<T>` フィールドを持たせるのが自然）
 - **テストプロジェクトは対象外**: `tests/TkHLSL.Tests` は net10.0 のみでよく、マルチターゲット化はライブラリ本体のみに適用する
+- **`IReadOnlySet<T>` の netstandard2.0 非対応**: §7.2 で `FunctionInfo.GlobalUses` の型として仮置きしていた `IReadOnlySet<Handle<GlobalVariable>>` は、`IReadOnlySet<T>` インターフェース自体が .NET 5 以降にしか存在せず netstandard2.0 では参照できない（PolySharp もこの型はポリフィルしない）ため採用できない。
+  - → **決定（Phase 4 で対応）**: `FunctionInfo.GlobalUses` は `IReadOnlyCollection<Handle<GlobalVariable>>` とし、O(1) メンバーシップ判定用に `bool UsesGlobal(Handle<GlobalVariable>)` を別途公開する。内部は `HashSet<Handle<GlobalVariable>>` で、参照するグローバルが無い関数同士は単一の共有空集合インスタンスを使い回してアロケーションを避ける。
+- **識別子テーブル検索のアロケーション**: Phase 4 の Analyzer は関数本体中の全識別子トークンを `GlobalVariables`/`Functions` の名前テーブル（`Dictionary<string, T>`）と突合する必要があるが、`Dictionary<string, T>` は本来 `string` キーでしか検索できず、トークンごとに部分文字列を確保すると識別子1つにつき1アロケーションが発生してしまう。
+  - → **決定（Phase 4 で対応）**: net9.0 で追加された `Dictionary<TKey,TValue>.GetAlternateLookup<TAlternateKey>`（`StringComparer.Ordinal` が `IAlternateEqualityComparer<ReadOnlySpan<char>, string>` を実装することを利用）を net10.0 ターゲットでのみ使用し、`ReadOnlySpan<char>` のまま無アロケーションで検索する。netstandard2.0 には存在しない API のため、そちらは検索がヒットするトークンについてのみ `string` を確保するフォールバックとする（`#if NET9_0_OR_GREATER` で分岐）。
+- **Phase 4「未解決の呼び出し」診断の不採用**: §9 Phase 4 の原案では「存在しない関数名への呼び出しを Warning Diagnostic として記録する」としていたが、TkHLSL は組み込み関数（`mul`/`dot`/`saturate`/型コンストラクタ等）のテーブルを持たないため、グローバル・関数のどちらにも一致しない呼び出しは「本当に未解決な呼び出し」なのか「単なる組み込み関数呼び出し」なのかを区別できない。全ての組み込み関数呼び出しに Warning を出すと実用的な HLSL では大量の誤検出になり `Module.Diagnostics` が使い物にならなくなるため、この診断は実装せず、一致しない呼び出しは黙ってスキップする（§2.3 の「組み込み関数は名前テーブルに存在しないため自然に除外される」という記述と整合させた）。
 - **Unity 組込み include の扱い**: `UnityCG.cginc` 等をバンドルするか、`IIncludeResolver` を通じて完全に外部委譲のままにするかは未決定
   - → **決定（Phase 2 で対応）**: `Preprocessing/Preprocessor.cs` は `#include "path"` を検出すると `IIncludeResolver.TryResolve` を呼び出し、解決可能かどうかのみを検証する（解決失敗・`IncludeResolver` 未設定は Diagnostic）。解決できたファイルの内容はトークン化・出力トークン列への合成を行わない。理由: `Token`/`TextSpan` は「単一の `source` 文字列に対するオフセット」という前提で設計されており（`TokenExtensions.GetSpan`/`GetText` は呼び出し側が渡す1つの `source` を使う）、複数ファイルのトークンを1つの出力列に混在させるには各トークンがどのソース文字列に属するかを追加で保持する必要があるが、これは `Token` を2 int から肥大化させ Phase 1 の設計方針（トークンあたり無アロケーション・軽量）に反する。複数ファイルにまたがる本格的な include 展開は将来のオープン課題として残す
