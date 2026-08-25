@@ -11,23 +11,29 @@ namespace TkHLSL.Preprocessing;
 /// </summary>
 /// <remarks>
 ///     <para>
-///         Allocation policy: the scan is a single forward pass over the input token list (itself never
-///         copied), mirroring <see cref="Lexer.Tokenize" />. Directive keywords and macro identifiers are
-///         matched via <see cref="TokenExtensions.GetSpan" /> comparisons (zero allocation); a
-///         <see cref="string" /> is materialized only at the (comparatively rare) points where one is
-///         structurally required — a macro's name for the macro table, a symbol name for the
-///         <see cref="HlslParseOptions.DefinedSymbols" /> lookup, or a diagnostic message. Object macros
-///         with a non-empty body copy their captured <see cref="Token" /> values (two ints each) at
-///         expansion sites; expansion is a single non-recursive substitution — a macro whose body
-///         references another macro name is not expanded further, a documented limitation shared with
-///         <c>multi_compile</c>/<c>shader_feature</c> variant expansion, which this phase does not perform.
+///         Allocation policy: the scan is a single forward pass over each file's input token list (itself
+///         never copied), mirroring <see cref="Lexer.Tokenize" />. Directive keywords and macro identifiers
+///         are matched via <see cref="TokenExtensions.GetSpan(Token, string)" /> comparisons (zero
+///         allocation); a <see cref="string" /> is materialized only at the (comparatively rare) points
+///         where one is structurally required — a macro's name for the macro table, a symbol name for the
+///         <see cref="HlslParseOptions.DefinedSymbols" /> lookup, an include's resolved path, or a
+///         diagnostic message. Object macros with a non-empty body copy their captured
+///         <see cref="Token" /> values (two ints each) at expansion sites; expansion is a single
+///         non-recursive substitution — a macro whose body references another macro name is not expanded
+///         further, a documented limitation shared with <c>multi_compile</c>/<c>shader_feature</c> variant
+///         expansion, which this phase does not perform.
 ///     </para>
 ///     <para>
-///         <c>#include</c> resolution is delegated to <see cref="IIncludeResolver" />, but the resolved
-///         content is only checked for resolvability here — it is not tokenized or spliced into the output
-///         stream. Doing so safely would require every <see cref="Token" /> to know which source string its
-///         <see cref="TextSpan" /> applies to, which the current single-source-string design does not
-///         support (see docs/IMPLEMENTATION_PLAN.md §13, "Unity 組込み include の扱い").
+///         <c>#include</c> resolution is delegated to <see cref="IIncludeResolver" />; the resolved content
+///         is tokenized and spliced into the output stream. <see cref="Token" /> stays a two-int
+///         (<see cref="Lexing.TokenKind" />, <see cref="TextSpan" />) struct — no per-token source reference —
+///         by keeping every included file's tokens file-relative while they're scanned and shifting only at
+///         the two points a span leaves its file: when a code token is appended to the output
+///         (<c>Emit</c>) and when a diagnostic is recorded (<c>AddDiagnostic</c>). A macro body captured
+///         while scanning an included file is shifted once, at capture time, so expanding it later never
+///         shifts again. All included files' text is appended, in encounter order, to one composite
+///         <see cref="Text.SourceText" /> (see <see cref="PreprocessResult.Source" />) that every emitted
+///         span is an offset into — see docs/IMPLEMENTATION_PLAN.md §13, "Unity 組込み include の扱い".
 ///     </para>
 /// </remarks>
 public static class Preprocessor
@@ -40,15 +46,17 @@ public static class Preprocessor
 
         if (options is null) throw new ArgumentNullException(nameof(options));
 
-        var state = new State(source, tokens, options);
-        state.Run();
-        state.Output.Add(new Token(TokenKind.EndOfFile, new TextSpan(source.Length, 0)));
+        var state = new State(source, options);
+        state.RunFrame(source, tokens, 0, options.SourcePath);
+
+        var sourceText = state.Builder.Build();
+        state.Output.Add(new Token(TokenKind.EndOfFile, new TextSpan(sourceText.Text.Length, 0)));
 
         IReadOnlyList<Diagnostic> diagnostics = state.Diagnostics is null
             ? Array.Empty<Diagnostic>()
             : state.Diagnostics;
 
-        return new PreprocessResult(state.Output, state.KernelNames, diagnostics);
+        return new PreprocessResult(state.Output, state.KernelNames, diagnostics, sourceText);
     }
 
     private readonly struct MacroDefinition(string name, Token[] body)
@@ -63,29 +71,55 @@ public static class Preprocessor
         public readonly bool ParentEmitting = parentEmitting;
         public bool BranchActive = branchActive;
         public bool AnyBranchTaken = anyBranchTaken;
+
+        /// <summary>Already shifted to composite coordinates at push time (see class remarks).</summary>
         public readonly TextSpan DirectiveSpan = directiveSpan;
     }
 
-    private sealed class State(string source, IReadOnlyList<Token> tokens, HlslParseOptions options)
+    private sealed class State(string rootSource, HlslParseOptions options)
     {
         private readonly List<ConditionalFrame> _conditionalStack = [];
         private readonly List<MacroDefinition> _macros = [];
+        private readonly List<string> _openIncludes = [];
+        private readonly HashSet<string> _pragmaOnce = new(StringComparer.Ordinal);
 
-        public List<Token> Output { get; } = new(tokens.Count);
+        // --- current-frame state; saved/restored around a recursive #include (see ProcessInclude) ---
+        private string _source = string.Empty;
+        private IReadOnlyList<Token> _tokens = Array.Empty<Token>();
+        private int _offset;
+        private string? _path;
+        private int _depth;
+        private int _conditionalBase;
+
+        public SourceTextBuilder Builder { get; } = new(rootSource, options.SourcePath ?? string.Empty);
+
+        public List<Token> Output { get; } = [];
 
         public List<string> KernelNames { get; } = [];
 
         public List<Diagnostic>? Diagnostics { get; private set; }
 
-        public void Run()
+        /// <summary>
+        ///     Scans one file's token list, appending emitted tokens (shifted to composite coordinates) to
+        ///     the shared <see cref="Output" />. Recurses into itself (via <see cref="ProcessInclude" />) for
+        ///     every resolved <c>#include</c>, so the call stack mirrors the include stack.
+        /// </summary>
+        public void RunFrame(string fileSource, IReadOnlyList<Token> fileTokens, int offset, string? path)
         {
-            var count = tokens.Count;
+            _source = fileSource;
+            _tokens = fileTokens;
+            _offset = offset;
+            _path = path;
+            var conditionalBase = _conditionalStack.Count;
+            _conditionalBase = conditionalBase;
+
+            var count = fileTokens.Count;
             var i = 0;
             var atLineStart = true;
 
             while (i < count)
             {
-                var token = tokens[i];
+                var token = fileTokens[i];
                 switch (token.Kind)
                 {
                     case TokenKind.EndOfFile:
@@ -111,10 +145,12 @@ public static class Preprocessor
                 }
             }
 
-            if (_conditionalStack.Count > 0)
+            if (_conditionalStack.Count > conditionalBase)
             {
                 var unterminated = _conditionalStack[^1];
-                AddDiagnostic("対応する #endif が見つからない #if/#ifdef/#ifndef です。", unterminated.DirectiveSpan);
+                _conditionalStack.RemoveRange(conditionalBase, _conditionalStack.Count - conditionalBase);
+                AddDiagnosticAbsolute(DiagnosticSeverity.Error,
+                    "対応する #endif が見つからない #if/#ifdef/#ifndef です。", unterminated.DirectiveSpan);
             }
         }
 
@@ -122,11 +158,12 @@ public static class Preprocessor
         {
             if (token.Kind == TokenKind.Identifier && _macros.Count > 0)
             {
-                var text = token.GetSpan(source);
+                var text = token.GetSpan(_source);
                 foreach (var macro in _macros)
                 {
                     if (!text.SequenceEqual(macro.Name.AsSpan())) continue;
 
+                    // Macro bodies were shifted once, at capture time in ProcessDefine — do not shift again.
                     var body = macro.Body;
                     foreach (var t in body)
                         Output.Add(t);
@@ -135,7 +172,7 @@ public static class Preprocessor
                 }
             }
 
-            Output.Add(token);
+            Output.Add(Shift(token));
         }
 
         private bool IsEmitting()
@@ -153,14 +190,14 @@ public static class Preprocessor
 
             if (i >= lineEnd) return lineEnd;
 
-            var nameToken = tokens[i];
+            var nameToken = _tokens[i];
             if (nameToken.Kind != TokenKind.Identifier)
             {
                 if (IsEmitting()) AddDiagnostic("不明なプリプロセッサディレクティブです。", nameToken.Span);
                 return lineEnd;
             }
 
-            var name = nameToken.GetSpan(source);
+            var name = nameToken.GetSpan(_source);
             i++;
 
             if (name.SequenceEqual("if".AsSpan())) return ProcessIf(i, lineEnd, nameToken.Span);
@@ -183,7 +220,7 @@ public static class Preprocessor
 
             if (name.SequenceEqual("include".AsSpan())) return ProcessInclude(i, lineEnd);
 
-            if (IsEmitting()) AddDiagnostic($"不明なプリプロセッサディレクティブ '#{nameToken.GetText(source)}' です。", nameToken.Span);
+            if (IsEmitting()) AddDiagnostic($"不明なプリプロセッサディレクティブ '#{nameToken.GetText(_source)}' です。", nameToken.Span);
             return lineEnd;
         }
 
@@ -191,7 +228,7 @@ public static class Preprocessor
         {
             var parentEmitting = IsEmitting();
             var branchActive = parentEmitting && EvalDefinedExpression(i, lineEnd);
-            _conditionalStack.Add(new ConditionalFrame(parentEmitting, branchActive, branchActive, directiveSpan));
+            _conditionalStack.Add(new ConditionalFrame(parentEmitting, branchActive, branchActive, Shift(directiveSpan)));
             return lineEnd;
         }
 
@@ -199,13 +236,13 @@ public static class Preprocessor
         {
             var parentEmitting = IsEmitting();
             var branchActive = parentEmitting && EvalIdentifierDefined(i, lineEnd, negate);
-            _conditionalStack.Add(new ConditionalFrame(parentEmitting, branchActive, branchActive, directiveSpan));
+            _conditionalStack.Add(new ConditionalFrame(parentEmitting, branchActive, branchActive, Shift(directiveSpan)));
             return lineEnd;
         }
 
         private int ProcessElif(int i, int lineEnd, TextSpan directiveSpan)
         {
-            if (_conditionalStack.Count == 0)
+            if (_conditionalStack.Count <= _conditionalBase)
             {
                 AddDiagnostic("対応する #if がない #elif です。", directiveSpan);
                 return lineEnd;
@@ -223,7 +260,7 @@ public static class Preprocessor
 
         private int ProcessElse(int lineEnd, TextSpan directiveSpan)
         {
-            if (_conditionalStack.Count == 0)
+            if (_conditionalStack.Count <= _conditionalBase)
             {
                 AddDiagnostic("対応する #if がない #else です。", directiveSpan);
                 return lineEnd;
@@ -240,7 +277,7 @@ public static class Preprocessor
 
         private int ProcessEndif(int lineEnd, TextSpan directiveSpan)
         {
-            if (_conditionalStack.Count == 0)
+            if (_conditionalStack.Count <= _conditionalBase)
             {
                 AddDiagnostic("対応する #if がない #endif です。", directiveSpan);
                 return lineEnd;
@@ -258,15 +295,15 @@ public static class Preprocessor
         {
             i = SkipTrivia(i, end);
             var negate = false;
-            if (i < end && tokens[i].Kind == TokenKind.Bang)
+            if (i < end && _tokens[i].Kind == TokenKind.Bang)
             {
                 negate = true;
                 i++;
                 i = SkipTrivia(i, end);
             }
 
-            if (i >= end || tokens[i].Kind != TokenKind.Identifier ||
-                !tokens[i].GetSpan(source).SequenceEqual("defined".AsSpan()))
+            if (i >= end || _tokens[i].Kind != TokenKind.Identifier ||
+                !_tokens[i].GetSpan(_source).SequenceEqual("defined".AsSpan()))
             {
                 AddDiagnostic("サポートされていない #if/#elif 式です（'defined(NAME)' の形式のみ対応）。", SpanAt(i, end));
                 return false;
@@ -275,26 +312,26 @@ public static class Preprocessor
             i++;
             i = SkipTrivia(i, end);
 
-            var parenthesized = i < end && tokens[i].Kind == TokenKind.OpenParen;
+            var parenthesized = i < end && _tokens[i].Kind == TokenKind.OpenParen;
             if (parenthesized)
             {
                 i++;
                 i = SkipTrivia(i, end);
             }
 
-            if (i >= end || tokens[i].Kind != TokenKind.Identifier)
+            if (i >= end || _tokens[i].Kind != TokenKind.Identifier)
             {
                 AddDiagnostic("'defined' にシンボル名がありません。", SpanAt(i, end));
                 return false;
             }
 
-            var defined = options.DefinedSymbols.Contains(tokens[i].GetText(source));
+            var defined = IsSymbolDefined(_tokens[i].GetSpan(_source));
             i++;
 
             if (!parenthesized) return negate ? !defined : defined;
 
             i = SkipTrivia(i, end);
-            if (i < end && tokens[i].Kind == TokenKind.CloseParen)
+            if (i < end && _tokens[i].Kind == TokenKind.CloseParen)
             {
             }
             else
@@ -308,14 +345,31 @@ public static class Preprocessor
         private bool EvalIdentifierDefined(int i, int end, bool negate)
         {
             i = SkipTrivia(i, end);
-            if (i >= end || tokens[i].Kind != TokenKind.Identifier)
+            if (i >= end || _tokens[i].Kind != TokenKind.Identifier)
             {
                 AddDiagnostic("シンボル名がありません。", SpanAt(i, end));
                 return false;
             }
 
-            var defined = options.DefinedSymbols.Contains(tokens[i].GetText(source));
+            var defined = IsSymbolDefined(_tokens[i].GetSpan(_source));
             return negate ? !defined : defined;
+        }
+
+        /// <summary>
+        ///     Whether <paramref name="name" /> counts as defined for <c>#ifdef</c>/<c>#ifndef</c>/
+        ///     <c>defined(...)</c> resolution: either an active <c>#define</c> macro (checked first, via a
+        ///     zero-allocation span comparison) or a symbol listed in
+        ///     <see cref="HlslParseOptions.DefinedSymbols" /> (a <see cref="string" /> is materialized only
+        ///     on this fallback path). This is what makes <c>#ifndef GUARD</c> / <c>#define GUARD</c> include
+        ///     guards actually suppress a second inclusion.
+        /// </summary>
+        private bool IsSymbolDefined(ReadOnlySpan<char> name)
+        {
+            foreach (var macro in _macros)
+                if (name.SequenceEqual(macro.Name.AsSpan()))
+                    return true;
+
+            return options.DefinedSymbols.Contains(name.ToString());
         }
 
         private int ProcessPragma(int i, int lineEnd)
@@ -323,16 +377,25 @@ public static class Preprocessor
             if (!IsEmitting()) return lineEnd;
 
             i = SkipTrivia(i, lineEnd);
-            if (i >= lineEnd || tokens[i].Kind != TokenKind.Identifier ||
-                !tokens[i].GetSpan(source).SequenceEqual("kernel".AsSpan())) return lineEnd;
+            if (i >= lineEnd || _tokens[i].Kind != TokenKind.Identifier) return lineEnd;
 
-            var pragmaToken = tokens[i];
+            var pragmaNameToken = _tokens[i];
+            var pragmaName = pragmaNameToken.GetSpan(_source);
+
+            if (pragmaName.SequenceEqual("once".AsSpan()))
+            {
+                if (_path is not null) _pragmaOnce.Add(_path);
+                return lineEnd;
+            }
+
+            if (!pragmaName.SequenceEqual("kernel".AsSpan())) return lineEnd;
+
             i++;
             i = SkipTrivia(i, lineEnd);
-            if (i < lineEnd && tokens[i].Kind == TokenKind.Identifier)
-                KernelNames.Add(tokens[i].GetText(source));
+            if (i < lineEnd && _tokens[i].Kind == TokenKind.Identifier)
+                KernelNames.Add(_tokens[i].GetText(_source));
             else
-                AddDiagnostic("'#pragma kernel' にカーネル名がありません。", pragmaToken.Span);
+                AddDiagnostic("'#pragma kernel' にカーネル名がありません。", pragmaNameToken.Span);
 
             // '#pragma multi_compile'/'shader_feature' and any other pragma are intentionally
             // ignored: no variant matrix is expanded (known limitation, see docs/IMPLEMENTATION_PLAN.md §9 Phase 2).
@@ -344,17 +407,17 @@ public static class Preprocessor
             var emitting = IsEmitting();
             i = SkipTrivia(i, lineEnd);
 
-            if (i >= lineEnd || tokens[i].Kind != TokenKind.Identifier)
+            if (i >= lineEnd || _tokens[i].Kind != TokenKind.Identifier)
             {
                 if (emitting) AddDiagnostic("'#define' にマクロ名がありません。", SpanAt(i, lineEnd));
                 return lineEnd;
             }
 
-            var nameToken = tokens[i];
+            var nameToken = _tokens[i];
             i++;
 
             // No space between the name and '(' means a function-like macro, which is unsupported.
-            if (i < lineEnd && tokens[i].Kind == TokenKind.OpenParen && tokens[i].Span.Start == nameToken.Span.End)
+            if (i < lineEnd && _tokens[i].Kind == TokenKind.OpenParen && _tokens[i].Span.Start == nameToken.Span.End)
             {
                 if (emitting) AddDiagnostic("関数形式マクロ（引数付き #define）は未対応です。", nameToken.Span);
                 return lineEnd;
@@ -373,13 +436,13 @@ public static class Preprocessor
             {
                 var bodyList = new List<Token>(lineEnd - i);
                 for (var b = i; b < lineEnd; b++)
-                    if (tokens[b].Kind != TokenKind.LineComment && tokens[b].Kind != TokenKind.BlockComment)
-                        bodyList.Add(tokens[b]);
+                    if (_tokens[b].Kind != TokenKind.LineComment && _tokens[b].Kind != TokenKind.BlockComment)
+                        bodyList.Add(Shift(_tokens[b]));
 
                 body = [.. bodyList];
             }
 
-            DefineMacro(nameToken.GetText(source), body);
+            DefineMacro(nameToken.GetText(_source), body);
             return lineEnd;
         }
 
@@ -400,7 +463,7 @@ public static class Preprocessor
             var emitting = IsEmitting();
             i = SkipTrivia(i, lineEnd);
 
-            if (i >= lineEnd || tokens[i].Kind != TokenKind.Identifier)
+            if (i >= lineEnd || _tokens[i].Kind != TokenKind.Identifier)
             {
                 if (emitting) AddDiagnostic("'#undef' にマクロ名がありません。", SpanAt(i, lineEnd));
                 return lineEnd;
@@ -408,7 +471,7 @@ public static class Preprocessor
 
             if (!emitting) return lineEnd;
 
-            var name = tokens[i].GetText(source);
+            var name = _tokens[i].GetText(_source);
             for (var m = 0; m < _macros.Count; m++)
                 if (string.Equals(_macros[m].Name, name, StringComparison.Ordinal))
                 {
@@ -424,38 +487,87 @@ public static class Preprocessor
             if (!IsEmitting()) return lineEnd;
 
             i = SkipTrivia(i, lineEnd);
-            if (i >= lineEnd || tokens[i].Kind != TokenKind.StringLiteral)
+            if (i >= lineEnd || _tokens[i].Kind != TokenKind.StringLiteral)
             {
                 AddDiagnostic("'#include' にはファイルパスの文字列リテラルが必要です。", SpanAt(i, lineEnd));
                 return lineEnd;
             }
 
-            var pathToken = tokens[i];
-            var quoted = pathToken.GetText(source);
+            var pathToken = _tokens[i];
+            var quoted = pathToken.GetText(_source);
             var path = quoted.Length >= 2 ? quoted.Substring(1, quoted.Length - 2) : string.Empty;
 
             if (options.IncludeResolver is null)
+            {
                 AddDiagnostic($"IncludeResolver が設定されていないため '#include \"{path}\"' を解決できません。", pathToken.Span);
-            else if (!options.IncludeResolver.TryResolve(path, out _))
-                AddDiagnostic($"'#include \"{path}\"' を解決できませんでした。", pathToken.Span);
+                return lineEnd;
+            }
 
-            // The resolved content (if any) is intentionally not tokenized or merged into Output —
-            // see the "Allocation policy" remarks on Preprocessor for why.
+            if (_depth >= options.MaxIncludeDepth)
+            {
+                AddDiagnostic($"'#include \"{path}\"' の入れ子が深すぎます（上限 {options.MaxIncludeDepth}）。", pathToken.Span);
+                return lineEnd;
+            }
+
+            if (!options.IncludeResolver.TryResolve(path, _path, out var resolvedPath, out var content) ||
+                content is null)
+            {
+                AddDiagnostic($"'#include \"{path}\"' を解決できませんでした。", pathToken.Span);
+                return lineEnd;
+            }
+
+            var resolved = resolvedPath ?? path;
+
+            if (_pragmaOnce.Contains(resolved)) return lineEnd;
+
+            if (_openIncludes.Contains(resolved))
+            {
+                AddDiagnostic($"'#include \"{path}\"' が循環しています。", pathToken.Span);
+                return lineEnd;
+            }
+
+            var childLex = Lexer.Tokenize(content);
+            var childOffset = Builder.Reserve(resolved, content);
+
+            foreach (var d in childLex.Diagnostics)
+                AddDiagnosticAbsolute(d.Severity, d.Message,
+                    new TextSpan(d.Span.Start + childOffset, d.Span.Length));
+
+            var savedSource = _source;
+            var savedTokens = _tokens;
+            var savedOffset = _offset;
+            var savedPath = _path;
+            var savedConditionalBase = _conditionalBase;
+
+            _openIncludes.Add(resolved);
+            _depth++;
+
+            RunFrame(content, childLex.Tokens, childOffset, resolved);
+
+            _depth--;
+            _openIncludes.RemoveAt(_openIncludes.Count - 1);
+
+            _source = savedSource;
+            _tokens = savedTokens;
+            _offset = savedOffset;
+            _path = savedPath;
+            _conditionalBase = savedConditionalBase;
+
             return lineEnd;
         }
 
         private int FindLineEnd(int hashIndex)
         {
             var i = hashIndex + 1;
-            var count = tokens.Count;
-            while (i < count && tokens[i].Kind != TokenKind.NewLine && tokens[i].Kind != TokenKind.EndOfFile) i++;
+            var count = _tokens.Count;
+            while (i < count && _tokens[i].Kind != TokenKind.NewLine && _tokens[i].Kind != TokenKind.EndOfFile) i++;
             return i;
         }
 
         private int SkipTrivia(int i, int end)
         {
-            while (i < end && (tokens[i].Kind == TokenKind.LineComment ||
-                               tokens[i].Kind == TokenKind.BlockComment)) i++;
+            while (i < end && (_tokens[i].Kind == TokenKind.LineComment ||
+                               _tokens[i].Kind == TokenKind.BlockComment)) i++;
             return i;
         }
 
@@ -463,18 +575,29 @@ public static class Preprocessor
         ///     Span of token <paramref name="i" /> if it still lies within the current
         ///     directive line (<paramref name="end" />-exclusive); otherwise the span of the
         ///     line-terminating token at <paramref name="end" /> itself, for "ran out of tokens on this
-        ///     directive line" diagnostics.
+        ///     directive line" diagnostics. File-relative — shifted by <see cref="AddDiagnostic" />.
         /// </summary>
         private TextSpan SpanAt(int i, int end)
         {
             var idx = i < end ? i : end;
-            return idx < tokens.Count ? tokens[idx].Span : new TextSpan(source.Length, 0);
+            return idx < _tokens.Count ? _tokens[idx].Span : new TextSpan(_source.Length, 0);
         }
 
+        private Token Shift(Token token) => _offset == 0 ? token : new Token(token.Kind, Shift(token.Span));
+
+        private TextSpan Shift(TextSpan span) => _offset == 0 ? span : new TextSpan(span.Start + _offset, span.Length);
+
+        /// <summary>Records a diagnostic for a file-relative <paramref name="span" />, shifting it to composite coordinates.</summary>
         private void AddDiagnostic(string message, TextSpan span)
         {
+            AddDiagnosticAbsolute(DiagnosticSeverity.Error, message, Shift(span));
+        }
+
+        /// <summary>Records a diagnostic for a <paramref name="span" /> that is already in composite coordinates.</summary>
+        private void AddDiagnosticAbsolute(DiagnosticSeverity severity, string message, TextSpan span)
+        {
             Diagnostics ??= [];
-            Diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span));
+            Diagnostics.Add(new Diagnostic(severity, message, span));
         }
     }
 }

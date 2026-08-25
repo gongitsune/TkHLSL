@@ -6,7 +6,9 @@ namespace TkHLSL.Preprocessing;
 /// </summary>
 public sealed class HlslParseOptions(
     IEnumerable<string>? definedSymbols = null,
-    IIncludeResolver? includeResolver = null)
+    IIncludeResolver? includeResolver = null,
+    string? sourcePath = null,
+    int maxIncludeDepth = 32)
 {
     /// <summary>
     ///     Symbols considered defined for conditional-compilation resolution. Empty by default, so a
@@ -18,4 +20,20 @@ public sealed class HlslParseOptions(
         : new HashSet<string>(definedSymbols, StringComparer.Ordinal);
 
     public IIncludeResolver? IncludeResolver { get; } = includeResolver;
+
+    /// <summary>
+    ///     Identity of the root source, passed to <see cref="IIncludeResolver.TryResolve" /> as
+    ///     <c>includerPath</c> for any top-level <c>#include</c>, and used as the root's
+    ///     <see cref="Text.SourceSegment.Path" />. <see langword="null"/> (the default) means the root has
+    ///     no identity of its own — hosts resolving includes relative to it should treat that as "resolve
+    ///     relative to some project-defined base".
+    /// </summary>
+    public string? SourcePath { get; } = sourcePath;
+
+    /// <summary>
+    ///     Maximum <c>#include</c> nesting depth before <see cref="Preprocessor.Process" /> stops recursing
+    ///     and reports a diagnostic instead, guarding against runaway or maliciously deep include chains.
+    ///     Clamped to at least 1.
+    /// </summary>
+    public int MaxIncludeDepth { get; } = maxIncludeDepth < 1 ? 1 : maxIncludeDepth;
 }

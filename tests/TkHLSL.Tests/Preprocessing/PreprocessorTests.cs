@@ -16,6 +16,11 @@ public class PreprocessorTests
             .Where(t => t.Kind != TokenKind.EndOfFile)
             .Select(t => t.GetText(source) + " "));
 
+    private static string TextOf(PreprocessResult result) =>
+        string.Concat(result.Tokens
+            .Where(t => t.Kind != TokenKind.EndOfFile)
+            .Select(t => t.GetText(result.Source) + " "));
+
     [Fact]
     public void Process_NullSource_Throws()
     {
@@ -206,6 +211,28 @@ public class PreprocessorTests
     }
 
     [Fact]
+    public void Process_DefinedMacro_IsVisibleToIfdef()
+    {
+        const string source = "#define FOO\n#ifdef FOO\nint x;\n#endif\n";
+
+        var result = Preprocess(source);
+
+        Assert.Equal("int x ; ", TextOf(result, source));
+        Assert.Empty(result.Diagnostics);
+    }
+
+    [Fact]
+    public void Process_UndefinedMacro_IsNoLongerVisibleToIfdef()
+    {
+        const string source = "#define FOO\n#undef FOO\n#ifdef FOO\nint x;\n#endif\n";
+
+        var result = Preprocess(source);
+
+        Assert.Equal("", TextOf(result, source));
+        Assert.Empty(result.Diagnostics);
+    }
+
+    [Fact]
     public void Process_ElseBranch_TakenWhenIfConditionFalse()
     {
         const string source = "#ifdef FOO\nint a;\n#else\nint b;\n#endif\n";
@@ -303,14 +330,34 @@ public class PreprocessorTests
 
     private sealed class StubIncludeResolver(string knownPath, string knownContent) : IIncludeResolver
     {
-        public bool TryResolve(string requestedPath, out string? content)
+        public bool TryResolve(string requestedPath, string? includerPath, out string? resolvedPath, out string? content)
         {
             if (requestedPath == knownPath)
             {
+                resolvedPath = knownPath;
                 content = knownContent;
                 return true;
             }
 
+            resolvedPath = null;
+            content = null;
+            return false;
+        }
+    }
+
+    /// <summary>A resolver over an in-memory file set, keyed by the requested path (no relative resolution).</summary>
+    private sealed class MultiIncludeResolver(Dictionary<string, string> files) : IIncludeResolver
+    {
+        public bool TryResolve(string requestedPath, string? includerPath, out string? resolvedPath, out string? content)
+        {
+            if (files.TryGetValue(requestedPath, out var found))
+            {
+                resolvedPath = requestedPath;
+                content = found;
+                return true;
+            }
+
+            resolvedPath = null;
             content = null;
             return false;
         }
@@ -357,6 +404,216 @@ public class PreprocessorTests
         var result = Preprocess(source, options);
 
         Assert.Empty(result.Diagnostics);
+        Assert.Single(result.Source.Segments);
+    }
+
+    [Fact]
+    public void Process_Include_SplicesContentIntoOutput()
+    {
+        const string source = "#include \"Common.cginc\"\nint x;\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc", "float y;"));
+
+        var result = Preprocess(source, options);
+
+        Assert.Equal("float y ; int x ; ", TextOf(result));
+    }
+
+    [Fact]
+    public void Process_NestedInclude_SplicesBothFiles()
+    {
+        const string source = "#include \"A.cginc\"\nint root;\n";
+        var options = new HlslParseOptions(includeResolver: new MultiIncludeResolver(new Dictionary<string, string>
+        {
+            ["A.cginc"] = "#include \"B.cginc\"\nfloat a;\n",
+            ["B.cginc"] = "float b;\n",
+        }));
+
+        var result = Preprocess(source, options);
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Equal("float b ; float a ; int root ; ", TextOf(result));
+    }
+
+    [Fact]
+    public void Process_MacroDefinedInInclude_IsVisibleInIncluder()
+    {
+        const string source = "#include \"Common.cginc\"\nint arr[THREADS];\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc", "#define THREADS 8\n"));
+
+        var result = Preprocess(source, options);
+
+        Assert.Contains(result.Tokens, t => t.Kind == TokenKind.IntLiteral && t.GetText(result.Source) == "8");
+    }
+
+    [Fact]
+    public void Process_MacroFromIncludeExpandsToIncludedFileSpan()
+    {
+        const string source = "#include \"Common.cginc\"\nTHREADS\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc", "#define THREADS 8\n"));
+
+        var result = Preprocess(source, options);
+
+        var token = Assert.Single(result.Tokens, t => t.Kind == TokenKind.IntLiteral);
+        Assert.Equal("8", token.GetText(result.Source));
+        Assert.True(result.Source.TryGetLocation(token.Span.Start, out var segment, out _));
+        Assert.Equal("Common.cginc", segment.Path);
+    }
+
+    [Fact]
+    public void Process_IncludeGuard_PreventsDoubleDefinition()
+    {
+        const string source = "#include \"Common.cginc\"\n#include \"Common.cginc\"\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc",
+            "#ifndef COMMON_INCLUDED\n#define COMMON_INCLUDED\nint g;\n#endif\n"));
+
+        var result = Preprocess(source, options);
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Equal("int g ; ", TextOf(result));
+    }
+
+    [Fact]
+    public void Process_PragmaOnce_PreventsDoubleInclusion()
+    {
+        const string source = "#include \"Common.cginc\"\n#include \"Common.cginc\"\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc",
+            "#pragma once\nint g;\n"));
+
+        var result = Preprocess(source, options);
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Equal("int g ; ", TextOf(result));
+    }
+
+    [Fact]
+    public void Process_SelfIncludingFile_ProducesCycleDiagnosticAndTerminates()
+    {
+        const string source = "#include \"A.cginc\"\n";
+        var options = new HlslParseOptions(includeResolver: new MultiIncludeResolver(new Dictionary<string, string>
+        {
+            ["A.cginc"] = "#include \"A.cginc\"\nint a;\n",
+        }));
+
+        var result = Preprocess(source, options);
+
+        Assert.Single(result.Diagnostics);
+        Assert.Equal("int a ; ", TextOf(result));
+    }
+
+    [Fact]
+    public void Process_MutualIncludeCycle_ProducesCycleDiagnosticAndTerminates()
+    {
+        const string source = "#include \"A.cginc\"\n";
+        var options = new HlslParseOptions(includeResolver: new MultiIncludeResolver(new Dictionary<string, string>
+        {
+            ["A.cginc"] = "#include \"B.cginc\"\nint a;\n",
+            ["B.cginc"] = "#include \"A.cginc\"\nint b;\n",
+        }));
+
+        var result = Preprocess(source, options);
+
+        Assert.Single(result.Diagnostics);
+        Assert.Equal("int b ; int a ; ", TextOf(result));
+    }
+
+    [Fact]
+    public void Process_IncludeDepthExceedsCap_ProducesDiagnostic()
+    {
+        const string source = "#include \"Chain.cginc\"\n";
+        var options = new HlslParseOptions(
+            includeResolver: new MultiIncludeResolver(new Dictionary<string, string>
+            {
+                ["Chain.cginc"] = "#include \"Chain2.cginc\"\n",
+                ["Chain2.cginc"] = "#include \"Chain3.cginc\"\n",
+                ["Chain3.cginc"] = "#include \"Chain4.cginc\"\n",
+                ["Chain4.cginc"] = "int deep;\n",
+            }),
+            maxIncludeDepth: 2);
+
+        var result = Preprocess(source, options);
+
+        Assert.Single(result.Diagnostics);
+        Assert.DoesNotContain("deep", TextOf(result));
+    }
+
+    [Fact]
+    public void Process_UnterminatedIfInInclude_ReportsAgainstIncludeSpanAndIncluderContinues()
+    {
+        const string source = "#include \"Common.cginc\"\nint after;\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc", "#ifdef FOO\nint x;\n"));
+
+        var result = Preprocess(source, options);
+
+        Assert.Single(result.Diagnostics);
+        Assert.True(result.Source.TryGetLocation(result.Diagnostics[0].Span.Start, out var segment, out _));
+        Assert.Equal("Common.cginc", segment.Path);
+        Assert.Contains(result.Tokens, t => t.Kind == TokenKind.Identifier && t.GetText(result.Source) == "after");
+    }
+
+    [Fact]
+    public void Process_EndifInIncludeCannotCloseIncludersIf()
+    {
+        const string source = "#ifdef FOO\n#include \"Common.cginc\"\nint stillOpen;\n#endif\n";
+        var options = new HlslParseOptions(["FOO"],
+            includeResolver: new StubIncludeResolver("Common.cginc", "#endif\nint fromInclude;\n"));
+
+        var result = Preprocess(source, options);
+
+        // The bare #endif inside the include is unmatched (reported), and the includer's own
+        // #ifdef FOO/#endif still balances correctly, so `stillOpen` is still emitted.
+        Assert.NotEmpty(result.Diagnostics);
+        Assert.Contains(result.Tokens, t => t.Kind == TokenKind.Identifier && t.GetText(result.Source) == "stillOpen");
+    }
+
+    [Fact]
+    public void Process_DiagnosticInIncludedFile_PointsIntoIncludedContent()
+    {
+        const string source = "#include \"Common.cginc\"\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc", "#unknowndirective\n"));
+
+        var result = Preprocess(source, options);
+
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.True(result.Source.TryGetLocation(diagnostic.Span.Start, out var segment, out var offsetInFile));
+        Assert.Equal("Common.cginc", segment.Path);
+        Assert.True(offsetInFile >= 0);
+    }
+
+    [Fact]
+    public void Process_LexErrorInIncludedFile_IsReportedWithShiftedSpan()
+    {
+        const string source = "#include \"Common.cginc\"\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc", "\"unterminated"));
+
+        var result = Preprocess(source, options);
+
+        Assert.NotEmpty(result.Diagnostics);
+        var diagnostic = result.Diagnostics[0];
+        Assert.True(result.Source.TryGetLocation(diagnostic.Span.Start, out var segment, out _));
+        Assert.Equal("Common.cginc", segment.Path);
+    }
+
+    [Fact]
+    public void Process_NoIncludes_SourceTextIsRootIdentity()
+    {
+        const string source = "int x;\n";
+
+        var result = Preprocess(source);
+
+        Assert.Same(source, result.Source.Text);
+    }
+
+    [Fact]
+    public void Process_EofToken_IsAtCompositeEnd()
+    {
+        const string source = "#include \"Common.cginc\"\nint x;\n";
+        var options = new HlslParseOptions(includeResolver: new StubIncludeResolver("Common.cginc", "float y;"));
+
+        var result = Preprocess(source, options);
+
+        var eof = result.Tokens[^1];
+        Assert.Equal(TokenKind.EndOfFile, eof.Kind);
+        Assert.Equal(result.Source.Text.Length, eof.Span.Start);
     }
 
     [Fact]

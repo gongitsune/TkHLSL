@@ -36,15 +36,16 @@ public static class HlslParser
 
         var lexResult = Lexer.Tokenize(sourceText);
         var preprocessResult = Preprocessor.Process(sourceText, lexResult.Tokens, options);
-        var module = TopLevelParser.Parse(sourceText, preprocessResult.Tokens, preprocessResult.KernelNames);
-        var moduleInfo = Analyzer.Analyze(sourceText, preprocessResult.Tokens, module);
+        var composite = preprocessResult.Source.Text;
+        var module = TopLevelParser.Parse(composite, preprocessResult.Tokens, preprocessResult.KernelNames);
+        var moduleInfo = Analyzer.Analyze(composite, preprocessResult.Tokens, module);
 
         var allResources = BuildAllResources(module);
         var kernels = BuildKernels(module, moduleInfo, allResources);
         var diagnostics =
             CombineDiagnostics(lexResult.Diagnostics, preprocessResult.Diagnostics, module.Diagnostics);
 
-        return new HlslCompilationResult(kernels, allResources, diagnostics);
+        return new HlslCompilationResult(kernels, allResources, diagnostics) { Source = preprocessResult.Source };
     }
 
     private static ResourceBinding[] BuildAllResources(Module module)

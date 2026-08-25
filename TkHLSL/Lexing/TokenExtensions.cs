@@ -1,3 +1,5 @@
+using TkHLSL.Text;
+
 namespace TkHLSL.Lexing;
 
 /// <summary>
@@ -21,6 +23,17 @@ public static class TokenExtensions
         public string GetText(string source)
         {
             return source.Substring(token.Span.Start, token.Span.Length);
+        }
+
+        /// <summary>Zero-allocation view of the token's text within a composite <see cref="SourceText" />.</summary>
+        public ReadOnlySpan<char> GetSpan(SourceText source)
+        {
+            return source.Slice(token.Span);
+        }
+
+        public string GetText(SourceText source)
+        {
+            return source.Slice(token.Span).ToString();
         }
     }
 }

@@ -180,4 +180,92 @@ public class HlslParserTests
 
         Assert.NotEmpty(result.Diagnostics);
     }
+
+    private sealed class StubIncludeResolver(string knownPath, string knownContent) : IIncludeResolver
+    {
+        public bool TryResolve(string requestedPath, string? includerPath, out string? resolvedPath, out string? content)
+        {
+            if (requestedPath == knownPath)
+            {
+                resolvedPath = knownPath;
+                content = knownContent;
+                return true;
+            }
+
+            resolvedPath = null;
+            content = null;
+            return false;
+        }
+    }
+
+    [Fact]
+    public void Parse_ResourceDeclaredInInclude_IsBoundToKernel()
+    {
+        const string source = """
+                              #pragma kernel CSMain
+                              #include "Res.cginc"
+
+                              [numthreads(8,1,1)]
+                              void CSMain(uint3 id : SV_DispatchThreadID)
+                              {
+                                  _Result[id.x] = 1.0;
+                              }
+                              """;
+        var options = new HlslParseOptions(
+            includeResolver: new StubIncludeResolver("Res.cginc",
+                "RWStructuredBuffer<float> _Result : register(u0);\n"));
+
+        var result = HlslParser.Parse(source, options);
+
+        Assert.Empty(result.Diagnostics);
+        var resource = Assert.Single(result.AllResources);
+        Assert.Equal("_Result", resource.Name);
+        var kernel = Assert.Single(result.Kernels);
+        Assert.Same(resource, Assert.Single(kernel.Bindings));
+
+        Assert.True(result.Source.TryGetLocation(resource.Location.Start, out var segment, out _));
+        Assert.Equal("Res.cginc", segment.Path);
+    }
+
+    [Fact]
+    public void Parse_NumthreadsFromIncludedMacro_ResolvesThreadGroupSize()
+    {
+        const string source = """
+                              #pragma kernel CSMain
+                              #include "Common.cginc"
+
+                              [numthreads(THREADS,THREADS,1)]
+                              void CSMain(uint3 id : SV_DispatchThreadID)
+                              {
+                              }
+                              """;
+        var options = new HlslParseOptions(
+            includeResolver: new StubIncludeResolver("Common.cginc", "#define THREADS 8\n"));
+
+        var result = HlslParser.Parse(source, options);
+
+        Assert.Empty(result.Diagnostics);
+        var kernel = Assert.Single(result.Kernels);
+        Assert.Equal(new ThreadGroupSize(8, 8, 1), kernel.ThreadGroupSize);
+    }
+
+    [Fact]
+    public void Parse_UnresolvedInclude_StillProducesKernels()
+    {
+        const string source = """
+                              #pragma kernel CSMain
+                              #include "Missing.cginc"
+
+                              [numthreads(8,1,1)]
+                              void CSMain(uint3 id : SV_DispatchThreadID)
+                              {
+                              }
+                              """;
+
+        var result = HlslParser.Parse(source, new HlslParseOptions());
+
+        Assert.NotEmpty(result.Diagnostics);
+        var kernel = Assert.Single(result.Kernels);
+        Assert.Equal("CSMain", kernel.Name);
+    }
 }

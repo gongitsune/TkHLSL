@@ -1,12 +1,14 @@
 using TkHLSL.Diagnostics;
 using TkHLSL.Lexing;
+using TkHLSL.Text;
 
 namespace TkHLSL.Preprocessing;
 
 /// <summary>
 ///     The output of <see cref="Preprocessor.Process" />: the macro-expanded, conditional-compilation-
-///     resolved token stream ready for the Phase 3 parser, plus <c>#pragma kernel</c> name candidates
-///     and any preprocessing diagnostics.
+///     resolved, include-expanded token stream ready for the Phase 3 parser, the composite
+///     <see cref="SourceText" /> every <see cref="Tokens" /> span is an offset into, plus <c>#pragma kernel</c>
+///     name candidates and any preprocessing diagnostics.
 /// </summary>
 /// <remarks>
 ///     <see cref="Tokens" /> contains only code tokens and a trailing <see cref="TokenKind.EndOfFile" />
@@ -16,7 +18,8 @@ namespace TkHLSL.Preprocessing;
 public readonly struct PreprocessResult(
     IReadOnlyList<Token> tokens,
     IReadOnlyList<string> kernelNames,
-    IReadOnlyList<Diagnostic> diagnostics)
+    IReadOnlyList<Diagnostic> diagnostics,
+    SourceText? source = null)
 {
     public IReadOnlyList<Token> Tokens { get; } = tokens;
 
@@ -27,4 +30,11 @@ public readonly struct PreprocessResult(
     public IReadOnlyList<string> KernelNames { get; } = kernelNames;
 
     public IReadOnlyList<Diagnostic> Diagnostics { get; } = diagnostics;
+
+    /// <summary>
+    ///     The composite source every span in <see cref="Tokens" /> and <see cref="Diagnostics" /> is an
+    ///     offset into — the root source with every resolved <c>#include</c> spliced in. When the source had
+    ///     no includes, <see cref="Text.SourceText.Text" /> is the original root string itself.
+    /// </summary>
+    public SourceText Source { get; } = source ?? SourceText.FromRoot(string.Empty);
 }

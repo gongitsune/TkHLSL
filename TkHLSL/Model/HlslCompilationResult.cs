@@ -1,4 +1,5 @@
 using TkHLSL.Diagnostics;
+using TkHLSL.Text;
 
 namespace TkHLSL.Model;
 
@@ -12,4 +13,13 @@ namespace TkHLSL.Model;
 public sealed record HlslCompilationResult(
     IReadOnlyList<KernelBindingInfo> Kernels,
     IReadOnlyList<ResourceBinding> AllResources,
-    IReadOnlyList<Diagnostic> Diagnostics);
+    IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>
+    ///     The composite source every <see cref="TextSpan" /> in this result (every
+    ///     <see cref="Ir.TokenRange" />-derived <c>Location</c> and every <see cref="Diagnostic.Span" />) is
+    ///     an offset into — the root source with every resolved <c>#include</c> spliced in. Use
+    ///     <see cref="Text.SourceText.TryGetLocation" /> to map a span back to the file it came from.
+    /// </summary>
+    public SourceText Source { get; init; } = SourceText.FromRoot(string.Empty);
+}
