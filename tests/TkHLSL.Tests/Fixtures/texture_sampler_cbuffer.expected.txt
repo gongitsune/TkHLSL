@@ -1,0 +1,7 @@
+kernel CSMain [numthreads(8, 8, 1)]
+  Texture2D<float4> _InputTexture
+  SamplerState sampler_InputTexture
+  RWStructuredBuffer<float4> _Result : register(u0)
+unused:
+  CBuffer Params
+diagnostics: (none)

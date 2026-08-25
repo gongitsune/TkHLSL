@@ -1,0 +1,44 @@
+#pragma kernel CSMain
+
+Texture2D<float4> _Tex2D : register(t0);
+Texture2DArray<float4> _Tex2DArray : register(t1);
+Texture3D<float4> _Tex3D : register(t2);
+TextureCube<float4> _TexCube : register(t3);
+TextureCubeArray<float4> _TexCubeArray : register(t4);
+
+RWTexture2D<float4> _RWTex2D : register(u0);
+RWTexture2DArray<float4> _RWTex2DArray : register(u1);
+RWTexture3D<float4> _RWTex3D : register(u2);
+
+StructuredBuffer<float> _SBuf : register(t5);
+RWStructuredBuffer<float> _RWSBuf : register(u3);
+AppendStructuredBuffer<float> _AppendBuf : register(u4);
+ConsumeStructuredBuffer<float> _ConsumeBuf : register(u5);
+
+ByteAddressBuffer _ByteBuf : register(t6);
+RWByteAddressBuffer _RWByteBuf : register(u6);
+
+SamplerState _Samp : register(s0);
+SamplerComparisonState _CmpSamp : register(s1);
+
+float4 _PlainGlobal;
+
+[numthreads(1,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    _RWSBuf[id.x] = _SBuf[id.x]
+        + _RWTex2D[id.xy].x
+        + _RWTex2DArray[id.xyz].x
+        + _RWTex3D[id.xyz].x
+        + _Tex2D.Sample(_Samp, float2(0, 0)).x
+        + _Tex2DArray.Sample(_Samp, float3(0, 0, 0)).x
+        + _Tex3D.Sample(_Samp, float3(0, 0, 0)).x
+        + _TexCube.Sample(_Samp, float3(0, 0, 0)).x
+        + _TexCubeArray.Sample(_Samp, float4(0, 0, 0, 0)).x
+        + _ByteBuf.Load(0)
+        + _PlainGlobal.x;
+    _RWByteBuf.Store(0, 1);
+    _AppendBuf.Append(1.0);
+    _ConsumeBuf.Consume();
+    _CmpSamp;
+}

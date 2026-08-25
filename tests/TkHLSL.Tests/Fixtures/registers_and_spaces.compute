@@ -1,0 +1,12 @@
+#pragma kernel CSMain
+
+StructuredBuffer<float> _BufNoSpace : register(t0);
+RWStructuredBuffer<float> _BufWithSpace : register(u1, space2);
+Texture2D<float4> _TexArrayLike[4] : register(t1, space3);
+RWStructuredBuffer<float> _BufNoRegister;
+
+[numthreads(1,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    _BufNoRegister[id.x] = _BufNoSpace[id.x] + _BufWithSpace[id.x] + _TexArrayLike[0].x;
+}

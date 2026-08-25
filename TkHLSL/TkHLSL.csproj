@@ -7,6 +7,18 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <PropertyGroup>
+        <PackageId>TkHLSL</PackageId>
+        <Version>0.1.0</Version>
+        <Authors>keigo</Authors>
+        <Description>HLSL Compute Shader analysis library: parses kernel declarations and top-level resource declarations (buffers, textures, samplers, cbuffers) and resolves, per kernel, which resources it reads or writes. Does not implement a Roslyn Analyzer or Source Generator itself — see docs/IMPLEMENTATION_PLAN.md.</Description>
+        <PackageTags>hlsl;compute-shader;unity;shader-parser;source-generator</PackageTags>
+        <!-- PackageLicenseExpression intentionally omitted: no license has been chosen for this
+             repository yet (no LICENSE file exists). Set this once that decision is made. -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    </PropertyGroup>
+
     <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
         <PackageReference Include="System.Memory" Version="4.6.3" />
     </ItemGroup>

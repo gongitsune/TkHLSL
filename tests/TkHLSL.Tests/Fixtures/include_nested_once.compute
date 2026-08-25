@@ -1,0 +1,9 @@
+#pragma kernel CSMain
+#include "wrapper.hlsl"
+#include "base.hlsl"
+
+[numthreads(THREADS,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    _Result[id.x] = 1.0;
+}

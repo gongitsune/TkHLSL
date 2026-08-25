@@ -1,0 +1,14 @@
+#pragma kernel CSMain
+
+#define THREADS 8
+#define ELEMENT_TYPE float
+#undef ELEMENT_TYPE
+#define ELEMENT_TYPE float4
+
+RWStructuredBuffer<ELEMENT_TYPE> _Result : register(u0);
+
+[numthreads(THREADS,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    _Result[id.x] = 1.0;
+}

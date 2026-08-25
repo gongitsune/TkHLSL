@@ -1,0 +1,16 @@
+// Known limitation (docs/IMPLEMENTATION_PLAN.md §4 non-goals, §10): the Analyzer does not detect
+// local-variable shadowing of a global identifier. `_Value` here is a *local* variable inside
+// CSMain, unrelated to the global RWStructuredBuffer of the same name declared below — but the
+// Analyzer's identifier scan can't tell the difference, so it (incorrectly) reports CSMain as using
+// the `_Value` global. This fixture pins down that known-wrong behavior so a future fix is a
+// visible, deliberate snapshot change rather than a silent one.
+#pragma kernel CSMain
+
+RWStructuredBuffer<float> _Value : register(u0);
+
+[numthreads(1,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    float _Value = 1.0;
+    _Value = _Value + 1.0;
+}

@@ -334,12 +334,17 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
 ### Phase 6: 統合テスト・ゴールデンコーパス・パッケージング準備
 
 - **タスク**:
-  - `tests/Fixtures/*.compute` を 10〜15 本程度整備（代表パターンを自作）
+  - `tests/TkHLSL.Tests/Fixtures/*.compute` を 15 本整備（代表パターンを自作）
   - コーパス全件に対する回帰テスト
   - CI（GitHub Actions 等）の設定検討
   - Phase 0 で先送りしていた場合、ここで netstandard2.0 マルチターゲット化を最終実施
   - NuGet パッケージメタデータの項目だけ用意（公開判断自体は別途）
 - **DoD**: コーパス全件 green、（対応していれば）両 TFM ビルド green
+- **決定（Phase 6 で対応）**: 回帰検証は**スナップショット比較**方式を採用した。`tests/TkHLSL.Tests/Golden/GoldenSnapshot.cs` が `HlslCompilationResult` を「カーネルごとのバインディング一覧 → 未使用リソース一覧 → 診断一覧」という決定的なテキストへ整形し、`Golden/GoldenCorpusTests.cs` が `Fixtures/*.compute` を列挙して対応する `Fixtures/*.expected.txt` と比較する。フィクスチャ追加時はテストコードを書く必要がなく、`.compute`/`.expected.txt` の追加だけで済む。`TKHLSL_UPDATE_SNAPSHOTS=1 dotnet test` で期待ファイルを再生成し、diff をレビューしてからコミットする運用とした（§11 参照）。`IIncludeResolver` は `Golden/FixtureIncludeResolver.cs` が `Fixtures/Includes/` 配下をマシン非依存の相対パスで解決する。`#if`/`#ifdef` の有効枝を切り替えたいフィクスチャは、ファイル先頭の `//! define: NAME` 行（複数可）で `HlslParseOptions.DefinedSymbols` を指定する。
+  - コーパスは §10 のパターンに加え、全 `ResourceKind` を1本で網羅するケースと register/space 明示指定のケースを追加した15本。`local_shadowing.compute` は§4の既知の制限（ローカル変数によるグローバル識別子のシャドーイング未検出）を意図的に誤検出結果ごとスナップショットへ固定し、将来の修正が「サイレントな挙動変化」ではなく可視化された diff になるようにしている。`texture_sampler_cbuffer.compute` も同様に、cbuffer メンバーへのアクセス（`_Params.x`）ではブロック名（`Params`）が一致しないため使用検出されない既知の制限（Phase 5 のテストで既出）を再確認する内容になっている。
+  - **CI は今回のフェーズでは対象外**（ユーザー判断により見送り。§12 将来ロードマップへ移動）。
+  - netstandard2.0 マルチターゲット化は Phase 0 で対応済みのため、Phase 6 では `dotnet build`/`dotnet pack` で両 TFM が警告なくビルドされ、生成される `.nupkg` の `lib/` に `net10.0` と `netstandard2.0` の両方が含まれることを確認するに留めた。
+  - NuGet メタデータ（`PackageId`/`Version`/`Authors`/`Description`/`PackageTags`/`IncludeSymbols`+`SymbolPackageFormat=snupkg`）を `TkHLSL/TkHLSL.csproj` に追加した。`PackageLicenseExpression` はリポジトリのライセンス方針が未決定（`LICENSE` ファイル未作成）のため意図的に保留し、`dotnet pack` 自体は成功することのみ確認した。`GeneratePackageOnBuild` は有効化せず、公開判断（NuGet.org へのプッシュ等）は別途行う。
 
 ## 10. サンプル HLSL／テストフィクスチャ戦略
 
@@ -356,10 +361,12 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
 
 - xUnit を採用
 - フェーズ単位でユニットテストを DoD に含める（各フェーズの成果物ごとに専用テストクラスを用意）
-- Phase 6 で `tests/Fixtures/` のコーパス全件に対する統合・回帰テストを追加
+- Phase 6 で `tests/TkHLSL.Tests/Fixtures/` のコーパス全件に対する統合・回帰テストを追加（`Golden/GoldenCorpusTests.cs`、スナップショット比較方式。§9 Phase 6 参照）
+- **コーパスへのフィクスチャ追加手順**: `tests/TkHLSL.Tests/Fixtures/<name>.compute` を追加 → `TKHLSL_UPDATE_SNAPSHOTS=1 dotnet test --filter FullyQualifiedName~GoldenCorpusTests` で `<name>.expected.txt` を生成 → 生成された内容を目視レビュー（意図した `Module`/`ModuleInfo` の解析結果になっているか）→ `.compute`/`.expected.txt` を一緒に commit する。`#include` を使うフィクスチャは `Fixtures/Includes/` にファイルを置く。`#if`/`#ifdef` の有効枝を切り替えたい場合はファイル先頭に `//! define: NAME` を1行1シンボルで書く。
 
 ## 12. 将来フェーズ／拡張ロードマップ
 
+- CI（GitHub Actions 等）の導入。Phase 6 で検討対象にしていたが、今回はユーザー判断によりスコープ外とした（`dotnet build`/`dotnet test`/`dotnet pack` はローカルで手動実行して確認する運用を継続）
 - フル式・制御フロー文法解析（if/for などの本格的な AST 化）
 - 診断・エラー回復の強化（IDE 向け品質）
 - `multi_compile`/`shader_feature` バリアントマトリクスの解決

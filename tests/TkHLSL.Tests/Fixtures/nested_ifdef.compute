@@ -1,0 +1,18 @@
+#pragma kernel CSMain
+
+RWStructuredBuffer<float> _Result : register(u0);
+
+#ifdef OUTER
+RWStructuredBuffer<float> _Outer : register(u1);
+#ifdef INNER
+RWStructuredBuffer<float> _Inner : register(u2);
+#else
+RWStructuredBuffer<float> _InnerElse : register(u3);
+#endif
+#endif
+
+[numthreads(1,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    _Result[id.x] = 1.0;
+}

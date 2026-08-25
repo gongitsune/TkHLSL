@@ -1,0 +1,18 @@
+#pragma kernel CSMain
+
+Texture2D<float4> _InputTexture;
+SamplerState sampler_InputTexture;
+RWStructuredBuffer<float4> _Result : register(u0);
+
+cbuffer Params
+{
+    float4 _Params;
+    int _Count;
+};
+
+[numthreads(8,8,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    float4 color = _InputTexture.Sample(sampler_InputTexture, float2(0.5, 0.5));
+    _Result[id.x] = color + _Params;
+}

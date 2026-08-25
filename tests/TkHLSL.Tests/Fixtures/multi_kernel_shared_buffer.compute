@@ -1,0 +1,20 @@
+#pragma kernel CSFirst
+#pragma kernel CSSecond
+
+RWStructuredBuffer<float> _Shared : register(u0);
+RWStructuredBuffer<float> _OnlyFirst : register(u1);
+RWStructuredBuffer<float> _OnlySecond : register(u2);
+
+[numthreads(8,1,1)]
+void CSFirst(uint3 id : SV_DispatchThreadID)
+{
+    _Shared[id.x] = 1.0;
+    _OnlyFirst[id.x] = 2.0;
+}
+
+[numthreads(8,1,1)]
+void CSSecond(uint3 id : SV_DispatchThreadID)
+{
+    _Shared[id.x] = 3.0;
+    _OnlySecond[id.x] = 4.0;
+}

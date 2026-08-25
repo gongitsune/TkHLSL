@@ -1,0 +1,7 @@
+kernel CSFirst [numthreads(8, 1, 1)]
+  RWStructuredBuffer<float> _Shared : register(u0)
+  RWStructuredBuffer<float> _OnlyFirst : register(u1)
+kernel CSSecond [numthreads(8, 1, 1)]
+  RWStructuredBuffer<float> _Shared : register(u0)
+  RWStructuredBuffer<float> _OnlySecond : register(u2)
+diagnostics: (none)

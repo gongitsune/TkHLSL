@@ -1,0 +1,7 @@
+RWStructuredBuffer<float> _Result : register(u0);
+Texture2D<float4> _InputTexture : register(t0);
+
+float square(float x)
+{
+    return x * x;
+}

@@ -1,0 +1,24 @@
+RWStructuredBuffer<float> _Data : register(u0);
+
+float readData(uint index)
+{
+    return _Data[index];
+}
+
+float helperB(uint index)
+{
+    return readData(index) * 2.0;
+}
+
+float helperA(uint index)
+{
+    return helperB(index) + 1.0;
+}
+
+#pragma kernel CSMain
+
+[numthreads(8,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    _Data[id.x] = helperA(id.x);
+}

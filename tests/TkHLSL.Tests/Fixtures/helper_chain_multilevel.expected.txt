@@ -1,0 +1,3 @@
+kernel CSMain [numthreads(8, 1, 1)]
+  RWStructuredBuffer<float> _Data : register(u0)
+diagnostics: (none)
