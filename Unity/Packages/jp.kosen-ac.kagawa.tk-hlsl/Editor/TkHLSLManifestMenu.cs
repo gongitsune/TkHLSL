@@ -3,8 +3,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using TkHLSL.Unity.PackageEditor;
 using UnityEditor;
+using TkHLSL.Unity.Editor;
 using UnityEngine;
 
 namespace Editor
@@ -12,7 +12,7 @@ namespace Editor
     /// <summary>
     ///     Full-rebuild recovery path for <c>Assets/TkHLSL.Generated/*.additionalfile</c> — use this
     ///     after first installing the package (no manifests exist yet) or if a manifest and its
-    ///     shader ever fall out of sync. <see cref="TkHLSLManifestPostprocessor" /> otherwise keeps
+    ///     shader ever fall out of sync. <see cref="TkHlslManifestPostprocessor" /> otherwise keeps
     ///     manifests updated incrementally as shaders change.
     /// </summary>
     internal static class TkHlslManifestMenu
@@ -33,19 +33,19 @@ namespace Editor
                     roots.Add(file.Replace('\\', '/'));
             }
 
-            if (Directory.Exists(TkHLSLManifestPostprocessor.OutputDirectory))
-                foreach (var stale in Directory.GetFiles(TkHLSLManifestPostprocessor.OutputDirectory,
+            if (Directory.Exists(TkHlslManifestPostprocessor.OutputDirectory))
+                foreach (var stale in Directory.GetFiles(TkHlslManifestPostprocessor.OutputDirectory,
                              "*.additionalfile", SearchOption.TopDirectoryOnly))
                     AssetDatabase.DeleteAsset(stale.Replace('\\', '/'));
 
             var filenameIndex = BuildFilenameIndex();
-            Directory.CreateDirectory(TkHLSLManifestPostprocessor.OutputDirectory);
+            Directory.CreateDirectory(TkHlslManifestPostprocessor.OutputDirectory);
 
             var written = 0;
             foreach (var root in roots)
             {
                 var manifestText = ShaderManifestBuilder.Build(root, ReadAllTextOrNull, File.Exists, filenameIndex);
-                var manifestPath = TkHLSLManifestPostprocessor.OutputDirectory + "/" +
+                var manifestPath = TkHlslManifestPostprocessor.OutputDirectory + "/" +
                                     root.Replace('/', '-').Replace('\\', '-') + ".additionalfile";
                 File.WriteAllText(manifestPath, manifestText);
                 written++;
@@ -53,7 +53,7 @@ namespace Editor
 
             AssetDatabase.Refresh();
             Debug.Log("TkHLSL: rebuilt " + written + " shader manifest(s) under " +
-                      TkHLSLManifestPostprocessor.OutputDirectory + ".");
+                      TkHlslManifestPostprocessor.OutputDirectory + ".");
         }
 
         private static Dictionary<string, string> BuildFilenameIndex()

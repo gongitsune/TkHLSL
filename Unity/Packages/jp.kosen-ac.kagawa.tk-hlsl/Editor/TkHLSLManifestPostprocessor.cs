@@ -8,11 +8,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using TkHLSL.Unity.Editor;
 using UnityEditor;
+using TkHLSL.Unity.Editor;
 
-namespace TkHLSL.Unity.PackageEditor
+namespace Editor
 {
     /// <summary>
     ///     Keeps <c>Assets/TkHLSL.Generated/*.additionalfile</c> shader manifests in sync with every
@@ -21,7 +20,7 @@ namespace TkHLSL.Unity.PackageEditor
     ///     README's "Shader manifests (automatic)" section and
     ///     docs/IMPLEMENTATION_PLAN.md, "csc.rsp を廃止し..." plan §3.
     /// </summary>
-    public sealed class TkHLSLManifestPostprocessor : AssetPostprocessor
+    public sealed class TkHlslManifestPostprocessor : AssetPostprocessor
     {
         internal const string OutputDirectory = "Assets/TkHLSL.Generated";
 

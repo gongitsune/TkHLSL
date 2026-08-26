@@ -1,16 +1,16 @@
 {
     "name": "jp.kosen-ac.kagawa.tk-hlsl.Editor",
     "rootNamespace": "",
-    "references": [
-        "jp.kosen-ac.kagawa.tk-hlsl.Editor"
-    ],
+    "references": [],
     "includePlatforms": [
         "Editor"
     ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
-    "precompiledReferences": [],
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "TkHLSL.Unity.Editor.dll"
+    ],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
