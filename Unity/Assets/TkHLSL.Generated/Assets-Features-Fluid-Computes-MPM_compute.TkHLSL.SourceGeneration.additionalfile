@@ -1,0 +1,105 @@
+tkhlsl-manifest	1
+root	Assets/Features/Fluid/Computes/MPM.compute
+defines
+input	Assets/Features/Fluid/Computes/MPM.compute
+input	Assets/Features/Utils/Shaders/matrix.hlsl
+input	Assets/Features/Utils/Shaders/utils.hlsl
+loc	0	Assets/Features/Fluid/Computes/MPM.compute	21	7	21	15
+loc	1	Assets/Features/Fluid/Computes/MPM.compute	23	11	23	12
+loc	2	Assets/Features/Fluid/Computes/MPM.compute	24	10	24	12
+loc	3	Assets/Features/Fluid/Computes/MPM.compute	25	13	25	14
+loc	4	Assets/Features/Fluid/Computes/MPM.compute	26	13	26	14
+loc	5	Assets/Features/Fluid/Computes/MPM.compute	29	7	29	19
+loc	6	Assets/Features/Fluid/Computes/MPM.compute	31	11	31	19
+loc	7	Assets/Features/Fluid/Computes/MPM.compute	32	10	32	16
+loc	8	Assets/Features/Fluid/Computes/MPM.compute	33	10	33	18
+loc	9	Assets/Features/Utils/Shaders/matrix.hlsl	5	19	5	26
+loc	10	Assets/Features/Utils/Shaders/matrix.hlsl	6	19	6	34
+loc	11	Assets/Features/Fluid/Computes/MPM.compute	39	8	39	19
+loc	12	Assets/Features/Fluid/Computes/MPM.compute	41	8	41	19
+loc	13	Assets/Features/Fluid/Computes/MPM.compute	41	21	41	27
+loc	14	Assets/Features/Fluid/Computes/MPM.compute	42	10	42	12
+loc	15	Assets/Features/Fluid/Computes/MPM.compute	42	14	42	20
+loc	16	Assets/Features/Fluid/Computes/MPM.compute	43	10	43	12
+loc	17	Assets/Features/Fluid/Computes/MPM.compute	45	10	45	15
+loc	18	Assets/Features/Fluid/Computes/MPM.compute	45	17	45	22
+loc	19	Assets/Features/Fluid/Computes/MPM.compute	46	10	46	16
+loc	20	Assets/Features/Fluid/Computes/MPM.compute	48	10	48	14
+loc	21	Assets/Features/Fluid/Computes/MPM.compute	48	16	48	24
+loc	22	Assets/Features/Fluid/Computes/MPM.compute	51	10	51	18
+loc	23	Assets/Features/Fluid/Computes/MPM.compute	51	20	51	31
+loc	24	Assets/Features/Fluid/Computes/MPM.compute	51	33	51	45
+loc	25	Assets/Features/Fluid/Computes/MPM.compute	52	10	52	17
+loc	26	Assets/Features/Fluid/Computes/MPM.compute	54	11	54	18
+loc	27	Assets/Features/Fluid/Computes/MPM.compute	56	10	56	25
+loc	28	Assets/Features/Fluid/Computes/MPM.compute	57	10	57	25
+loc	29	Assets/Features/Fluid/Computes/MPM.compute	59	8	59	26
+loc	30	Assets/Features/Fluid/Computes/MPM.compute	60	10	60	21
+loc	31	Assets/Features/Fluid/Computes/MPM.compute	66	27	66	28
+loc	32	Assets/Features/Fluid/Computes/MPM.compute	67	29	67	38
+loc	33	Assets/Features/Fluid/Computes/MPM.compute	70	24	70	30
+loc	34	Assets/Features/Fluid/Computes/MPM.compute	71	24	71	30
+loc	35	Assets/Features/Fluid/Computes/MPM.compute	74	31	74	44
+loc	36	Assets/Features/Fluid/Computes/MPM.compute	126	5	126	15
+loc	37	Assets/Features/Fluid/Computes/MPM.compute	138	5	138	21
+loc	38	Assets/Features/Fluid/Computes/MPM.compute	240	5	240	16
+loc	39	Assets/Features/Fluid/Computes/MPM.compute	279	5	279	21
+loc	40	Assets/Features/Fluid/Computes/MPM.compute	319	5	319	10
+struct	particle	0
+field	v	float3	-	-	1
+field	jp	float	-	-	2
+field	f	float3x3	-	-	3
+field	c	float3x3	-	-	4
+struct	object_force	5
+field	position	float3	-	-	6
+field	radius	float	-	-	7
+field	strength	float	-	-	8
+resource	svd_eps	PlainGlobal	float	-	-	9
+resource	svd_offdiag_eps	PlainGlobal	float	-	-	10
+resource	base_params	CBuffer	-	-	-	11
+field	n_particles	int	-	-	12
+field	n_grid	int	-	-	13
+field	dx	float	-	-	14
+field	inv_dx	float	-	-	15
+field	dt	float	-	-	16
+field	p_vol	float	-	-	17
+field	p_rho	float	-	-	18
+field	p_mass	float	-	-	19
+field	mu_0	float	-	-	20
+field	lambda_0	float	-	-	21
+field	dp_alpha	float	-	-	22
+field	dp_cohesion	float	-	-	23
+field	dp_hardening	float	-	-	24
+field	damping	float	-	-	25
+field	gravity	float4	-	-	26
+field	cylinder_radius	float	-	-	27
+field	cylinder_height	float	-	-	28
+field	object_force_count	int	-	-	29
+field	padding_obj	float	-	-	30
+resource	x	RWStructuredBuffer	float3	-	-	31
+resource	particles	RWStructuredBuffer	particle	-	-	32
+resource	grid_v	RWStructuredBuffer	int	-	-	33
+resource	grid_m	RWStructuredBuffer	int	-	-	34
+resource	object_forces	StructuredBuffer	object_force	-	-	35
+kernel	clear_grid	8	8	8	36
+bind	grid_v
+bind	grid_m
+kernel	particle_to_grid	32	1	1	37
+bind	svd_eps
+bind	svd_offdiag_eps
+bind	x
+bind	particles
+bind	grid_v
+bind	grid_m
+kernel	grid_update	8	8	8	38
+bind	x
+bind	grid_v
+bind	grid_m
+bind	object_forces
+kernel	grid_to_particle	32	1	1	39
+bind	x
+bind	particles
+bind	grid_v
+kernel	reset	32	1	1	40
+bind	x
+bind	particles

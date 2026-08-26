@@ -45,8 +45,7 @@ namespace Editor
             foreach (var root in roots)
             {
                 var manifestText = ShaderManifestBuilder.Build(root, ReadAllTextOrNull, File.Exists, filenameIndex);
-                var manifestPath = TkHlslManifestPostprocessor.OutputDirectory + "/" +
-                                    root.Replace('/', '-').Replace('\\', '-') + ".additionalfile";
+                var manifestPath = TkHlslManifestPostprocessor.ManifestPathFor(root);
                 File.WriteAllText(manifestPath, manifestText);
                 written++;
             }

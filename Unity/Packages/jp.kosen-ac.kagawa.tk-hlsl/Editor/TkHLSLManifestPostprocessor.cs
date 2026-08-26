@@ -24,6 +24,17 @@ namespace Editor
     {
         internal const string OutputDirectory = "Assets/TkHLSL.Generated";
 
+        // Unity's RoslynAdditionalFileImporter only wires a '*.additionalfile' asset into a
+        // compilation when its name follows '<OriginalFilename>.<AnalyzerName>.additionalfile' —
+        // '<AnalyzerName>' must match the analyzer/generator assembly it's meant for (see the
+        // package README's "Shader manifests" section). Without this suffix Unity still imports the
+        // asset (RoslynAdditionalFileImporter shows up in its .meta) but never passes it to csc.
+        // '<OriginalFilename>' must additionally contain no '.' — Unity splits the name on the
+        // *first* period to find where the analyzer name starts, so a dot in the filename part
+        // makes the parsed analyzer name garbage and the file is silently dropped again. See
+        // https://docs.unity3d.com/6000.0/Documentation/Manual/roslyn-analyzers-additional-files.html
+        internal const string AnalyzerName = "TkHLSL.SourceGeneration";
+
         private static readonly string[] ShaderExtensions =
         {
             ".compute", ".hlsl", ".cginc", ".hlslinc"
@@ -135,10 +146,16 @@ namespace Editor
             return index;
         }
 
-        private static string ManifestPathFor(string rootPath)
+        /// <summary>
+        ///     The manifest asset path for <paramref name="rootPath" />: the shader's path flattened
+        ///     into a single, period-free filename component followed by the analyzer-name suffix
+        ///     Unity matches on (see <see cref="AnalyzerName" />). The shader's real path is not
+        ///     recovered from this name — it is recorded as the manifest's <c>root</c> line.
+        /// </summary>
+        internal static string ManifestPathFor(string rootPath)
         {
-            var flat = rootPath.Replace('/', '-').Replace('\\', '-');
-            return OutputDirectory + "/" + flat + ".additionalfile";
+            var flat = rootPath.Replace('/', '-').Replace('\\', '-').Replace('.', '_');
+            return OutputDirectory + "/" + flat + "." + AnalyzerName + ".additionalfile";
         }
 
         private static string SafeReadAllText(string path)
