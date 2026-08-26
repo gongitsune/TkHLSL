@@ -31,9 +31,6 @@ copy_dll "$ROOT/src/TkHLSL.Unity/bin/Release/netstandard2.0/TkHLSL.Unity.dll" "T
 copy_dll "$ROOT/src/TkHLSL/bin/Release/netstandard2.0/TkHLSL.dll" "TkHLSL.dll"
 copy_dll "$ROOT/src/TkHLSL.SourceGeneration/bin/Release/netstandard2.0/TkHLSL.SourceGeneration.dll" \
   "TkHLSL.SourceGeneration.dll"
-# Only present if System.Memory's runtime assembly was actually needed for this SDK/TFM combo —
-# see the "System.Memory" note in this package's README.
-copy_dll "$ROOT/src/TkHLSL/bin/Release/netstandard2.0/System.Memory.dll" "System.Memory.dll"
 
 # --- .meta generation --------------------------------------------------------------------------
 
@@ -110,6 +107,5 @@ EOF
 write_runtime_plugin_meta  "a1b6c8f0d3e4415a9b6c7d2e1f4a5b6c" "TkHLSL.Unity.dll"
 write_analyzer_plugin_meta "b2c7d9e1f4053526ac7d8e3f2a5b6c7d" "TkHLSL.dll"
 write_analyzer_plugin_meta "c3d8eaf205164637bd8e9f4a3b6c7d8e" "TkHLSL.SourceGeneration.dll"
-write_analyzer_plugin_meta "d4e9fb0316275748ce9fa05b4c7d8e9f" "System.Memory.dll"
 
 echo "Done. Runtime/ is ready to import as a local Unity package."

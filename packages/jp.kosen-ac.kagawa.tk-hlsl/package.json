@@ -1,5 +1,5 @@
 {
-  "name": "jp.keigo.tk-hlsl",
+  "name": "jp.kosen-ac.kagawa.tk-hlsl",
   "version": "0.1.0",
   "displayName": "TkHLSL",
   "description": "Generates typed C# ComputeShader bindings (kernel setters, Dispatch, cbuffer setters, StructuredBuffer element structs) at compile time from your .compute files. Mark a partial class with [ComputeShaderBinding(\"path/to/Shader.compute\")] and the binding surface is generated for you — see the package README for the AdditionalFiles wiring this requires.",
