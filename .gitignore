@@ -1,7 +1,11 @@
 bin/
 obj/
-/packages/
 riderModule.iml
 /_ReSharper.Caches/
 
 .idea/
+
+# UPM package binaries: built by packages/jp.keigo.tk-hlsl/build.sh from src/, not checked in.
+# The .meta files it generates alongside them use fixed GUIDs, so re-running the script is safe.
+/packages/jp.keigo.tk-hlsl/Runtime/*.dll
+/packages/jp.keigo.tk-hlsl/Runtime/*.dll.meta

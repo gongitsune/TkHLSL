@@ -1,8 +1,10 @@
-# TkHLSL 実装計画
+# Tk.Hlsl 実装計画
 
-このドキュメントは TkHLSL の設計メモ兼ロードマップです。開発者本人が読み返し、フェーズごとの実装を進める際の指針として使う「生きたドキュメント」であり、フェーズが進むごとに更新します。
+このドキュメントは Tk.Hlsl（旧 TkHLSL）の設計メモ兼ロードマップです。開発者本人が読み返し、フェーズごとの実装を進める際の指針として使う「生きたドキュメント」であり、フェーズが進むごとに更新します。
 
-## 1. 概要
+> **方針転換（Phase 7〜10）**: §1・§7.3・§12・§13 が述べていた「Roslyn Analyzer / Source Generator は実装しない、外部ライブラリに委ねる」という当初方針は撤回しました。Unity 6 で実際に使うにあたり、同一ソリューション内に Source Generator（`src/Tk.Hlsl.SourceGeneration`）を実装する方針に変更しています。以下の §1 の記述は歴史的経緯として残しつつ、実際の構成は §14 を参照してください。
+
+## 1. 概要（Phase 0〜6 時点の記述、§14 で更新）
 
 TkHLSL は、Unity の ComputeShader（HLSL）ソースを解析し、カーネルごとに使用しているリソース（バッファ・テクスチャ・サンプラー・cbuffer など）を構造化データとして提供する**HLSL 解析専用ライブラリ**です。
 
@@ -398,3 +400,54 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
   - → **決定（Phase 5 で対応）**: `ResourceBinding` は `GlobalVariable` 1件につき1個だけ生成し（`HlslCompilationResult.AllResources`）、各 `KernelBindingInfo.Bindings` はそのインスタンスを参照共有する（複製しない）。各カーネルの `Bindings` 配列は `FunctionInfo.GlobalUses.Count` から厳密なサイズで一括確保し、`List<T>` の逐次追加・再確保を避ける。`GlobalUses`（`HashSet<Handle<GlobalVariable>>`、順序不定）を直接列挙せず `AllResources` を宣言順に線形走査して `FunctionInfo.UsesGlobal`（O(1)）で判定することで、出力順を決定的にしつつソートや中間コレクションを回避している。`Diagnostics` も同様に、Lexer/Preprocessor/Parser 三者の件数を先に合計してから配列を1回だけ確保する。
 - **Unity 組込み include の扱い**: `UnityCG.cginc` 等をバンドルするか、`IIncludeResolver` を通じて完全に外部委譲のままにするかは未決定
   - → **決定（Phase 2 で対応、当初は解決可否のみ検証していたが、後日実展開を実装）**: `Preprocessing/Preprocessor.cs` は `#include "path"` を検出すると `IIncludeResolver.TryResolve` を呼び出し、解決できたファイルの内容を字句解析したうえで出力トークン列へ実際に合成する。`Token`/`TextSpan` は「単一の `source` 文字列に対するオフセット」という前提のまま（2 int から肥大化させていない）で、複数ファイルの合成を「複数ソースを1本の composite `SourceText`（`Text/SourceText.cs`）に連結し、全 `TextSpan` をその composite テキストへのオフセットへ統一する」方式で実現した。各ファイルのトークンは走査中はファイル相対 span のまま保持し、`Preprocessor.State.Emit` で出力列へ追加する瞬間と `AddDiagnostic` で診断を記録する瞬間にのみ `_offset` を加算してシフトする（マクロ本体は `#define` 捕捉時に一度だけシフト済みとし、展開時は再シフトしない）。`IIncludeResolver.TryResolve` は includer のパスと解決済み正規パスも受け渡すようシグネチャを拡張し、正規パスを `#pragma once` ／循環 include 検出のキーに使う。`HlslCompilationResult.Source`（`SourceText`）で診断・位置情報を元ファイル・オフセットへ逆引きできる。
+
+## 14. Phase 7〜10: Roslyn Source Generator の実装（方針転換後）
+
+Unity 6 で実際に使うにあたり、§1・§13 の「Roslyn Analyzer/Source Generator は外部ライブラリの責務」という当初方針を撤回し、同一ソリューション内に実装した。リポジトリ全体を `TkHLSL` → `Tk.Hlsl` にリネームし、`src/`・`tests/`・`samples/`・`packages/` に再編成している（旧 `TkHLSL` プロジェクトは `src/Tk.Hlsl`）。
+
+### 14.1 構成
+
+```
+Tk.Hlsl.slnx
+src/
+  Tk.Hlsl/                        netstandard2.0;net10.0   パーサー本体（旧 TkHLSL）
+  Tk.Hlsl.Unity/                  netstandard2.0            [ComputeShaderBinding] 属性のみ、依存ゼロ
+  Tk.Hlsl.SourceGeneration/       netstandard2.0             IIncrementalGenerator
+tests/
+  Tk.Hlsl.Tests/                  net10.0
+  Tk.Hlsl.SourceGeneration.Tests/ net10.0
+samples/
+  Tk.Hlsl.Example/                net10.0
+packages/
+  jp.keigo.tk-hlsl/                                          UPM パッケージ（DLL は build.sh で生成、未コミット）
+```
+
+### 14.2 Phase 7: struct/cbuffer メンバー解析の追加
+
+Source Generator が `StructuredBuffer<T>` の要素 struct や `cbuffer` メンバー単位の setter を生成できるよう、`TopLevelParser` を拡張して `struct`/`cbuffer` の本体を実際にパースするようにした（従来は本体をスキップするだけだった）。`Ir.StructDefinition`/`Ir.StructMember` を新設し、`Module.Structs`（`Arena<StructDefinition>`）と `GlobalVariable.Members` に格納。公開モデルには `Model.HlslStruct`/`Model.HlslField` を追加し、`ResourceBinding.Fields`（cbuffer メンバー）と `HlslCompilationResult.Structs`（全 struct 宣言）として公開している。メンバー解析はベストエフォート（構文的に解釈できないメンバーは診断を出さずに次の `;` までスキップ）。
+
+### 14.3 Phase 8: `Tk.Hlsl.Unity`
+
+`ComputeShaderBindingAttribute(string path) { string[]? Defines }` のみを持つ、依存ゼロの netstandard2.0 ライブラリ。Generator は `ForAttributeWithMetadataName("Tk.Hlsl.Unity.ComputeShaderBindingAttribute")` でこれを検出する。
+
+### 14.4 Phase 9: `Tk.Hlsl.SourceGeneration`
+
+`Microsoft.CodeAnalysis.CSharp` 4.3.1（`ForAttributeWithMetadataName` の下限）を参照する `IIncrementalGenerator`。パイプラインはキャッシュが効くよう設計している：
+
+- `ForAttributeWithMetadataName` の結果は即座に `AttributeTargetInfo`（構造的に等価な record。`INamedTypeSymbol` は保持しない）に射影する。
+- `AdditionalTextsProvider` を `.compute`/`.hlsl`/`.cginc`/`.hlslinc` 拡張子でフィルタし、`AdditionalHlslFile`（パス＋テキストの record）に射影して `Collect()` した後、`EquatableArray<T>`（要素等価な配列ラッパー、本 Generator 専用に実装）に変換する。
+- `PipelineCompute.Compute` が実際の解析（`HlslParser.Parse`）とコード生成（`Emit.CodeEmitter.Emit`）を行う、入力に対して純粋な関数。Roslyn の `Diagnostic`/`Location` は使わず、`EmitDiagnosticInfo`（記述子 ID・引数・ファイルパス・`LinePositionSpanInfo`）という値型で結果を表現し、`RegisterSourceOutput` 内で初めて実際の `Diagnostic`/`Location` に変換する。
+
+対象ファイルの解決は `AdditionalFileIncludeResolver`（`IIncludeResolver` 実装、ディスクに一切触れない）で、`#include` もこの仕組みで解決する。パス照合は `PathMatching`（`/` 区切りに正規化したうえでのセグメント単位サフィックス一致）で行う。
+
+診断: `TKH0001`/`TKH0002`（HLSL の解析エラー／警告の転写）、`TKH1001`（ファイル未検出）、`TKH1002`（ファイル指定が曖昧）、`TKH1003`（`partial` 修飾子なし）、`TKH1004`（`#pragma kernel` なし）、`TKH1005`（対応する Unity API がないリソース/型）、`TKH1006`（struct パッキング不一致、現状は未発火— cbuffer メンバーに struct 型を許容した時点で再利用する想定。`StructuredBuffer<T>` の要素 struct は 16 バイト境界パッキングの対象外なのでこの診断を出していない）。
+
+生成コード: `Emit.CodeEmitter` が `Properties`（`Shader.PropertyToID` キャッシュ）、コンストラクタ、カーネルごとの `readonly struct`（`NumThreadsX/Y/Z` 定数、`Set_<Name>` リソース setter、`DispatchThreads`/`DispatchGroups`）、外側レベルの plain global／cbuffer メンバー setter（`Emit.HlslTypeMap` で HLSL 型→C# 型／`ComputeShader.Set*` メソッドへ変換）、`StructuredBuffer<T>` 系列が参照するユーザー struct の `[StructLayout(Sequential)]` 要素構造体を出力する。命名規則は「HLSL 名をそのまま使う」（決定事項どおり）。
+
+テストは `Tk.Hlsl.SourceGeneration.Tests`（15 件）: `Microsoft.CodeAnalysis.CSharp.SourceGenerators.Testing.XUnit`（`TestBehaviors.SkipGeneratedSourcesCheck` を指定し、生成ファイル一覧の完全一致ではなく「UnityStub 込みでコンパイルが通るか」を検証）による end-to-end テストと、`GeneratorDriver` を直接駆動する `GeneratorDriverHarness` による診断 ID・生成コード内容・決定性のテストの二本立て。
+
+### 14.5 Phase 10: UPM パッケージ
+
+`packages/jp.keigo.tk-hlsl/`（`package.json`, `README.md`, `build.sh`）。DLL 本体と対応する `.meta` は `build.sh` が `dotnet build -c Release` から `Runtime/` に生成するもので、リポジトリにはコミットしていない（`.gitignore` 参照）。`.meta` の GUID は `build.sh` にハードコードされた固定値で、再実行してもアセット ID は変わらない。`Tk.Hlsl.SourceGeneration.dll`/`Tk.Hlsl.dll`/（存在すれば）`System.Memory.dll` には `RoslynAnalyzer` ラベルを付け、全プラットフォームのビルド対象から除外している。
+
+**未検証の残課題**（`packages/jp.keigo.tk-hlsl/README.md` の「Known unknowns」参照）: パッケージ内の `RoslynAnalyzer` ラベル付き DLL が実際に利用者側アセンブリへ適用されるかは、実機の Unity 6 プロジェクトで確認できていない。効かない場合は `Assets/` 直下への直接配置にフォールバックする方針。
