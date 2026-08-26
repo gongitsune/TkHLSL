@@ -9,15 +9,10 @@ namespace TkHLSL.SourceGeneration;
 ///     array field would make every pipeline value compare unequal to its predecessor even when its
 ///     contents didn't change, defeating incremental caching entirely.
 /// </summary>
-internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IReadOnlyList<T>
+internal readonly struct EquatableArray<T>(T[] items) : IEquatable<EquatableArray<T>>, IReadOnlyList<T>
     where T : IEquatable<T>
 {
-    private readonly T[] _items;
-
-    public EquatableArray(T[] items)
-    {
-        _items = items;
-    }
+    private readonly T[] _items = items;
 
     public static EquatableArray<T> Empty { get; } = new([]);
 
@@ -31,11 +26,7 @@ internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IRea
         if (_items is null || other._items is null) return _items == other._items;
         if (_items.Length != other._items.Length) return false;
 
-        for (var i = 0; i < _items.Length; i++)
-            if (!_items[i].Equals(other._items[i]))
-                return false;
-
-        return true;
+        return !_items.Where((t, i) => !t.Equals(other._items[i])).Any();
     }
 
     public override bool Equals(object? obj)
@@ -49,9 +40,7 @@ internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IRea
 
         unchecked
         {
-            var hash = 17;
-            foreach (var item in _items) hash = hash * 31 + item.GetHashCode();
-            return hash;
+            return _items.Aggregate(17, (current, item) => current * 31 + item.GetHashCode());
         }
     }
 

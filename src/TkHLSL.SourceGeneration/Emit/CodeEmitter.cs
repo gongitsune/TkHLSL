@@ -19,21 +19,6 @@ namespace TkHLSL.SourceGeneration.Emit;
 /// </remarks>
 internal static class CodeEmitter
 {
-    /// <summary>Carries what <see cref="MakeDiagnostic" /> needs to turn an HLSL <see cref="TextSpan" /> into a file + line/column, without threading three separate parameters through every Emit* method.</summary>
-    private readonly struct EmitContext
-    {
-        public EmitContext(SourceText source, IReadOnlyDictionary<string, string> filesByPath, string rootPath)
-        {
-            Source = source;
-            FilesByPath = filesByPath;
-            RootPath = rootPath;
-        }
-
-        public SourceText Source { get; }
-        public IReadOnlyDictionary<string, string> FilesByPath { get; }
-        public string RootPath { get; }
-    }
-
     public static (string Source, List<EmitDiagnosticInfo> Diagnostics) Emit(AttributeTargetInfo target,
         HlslCompilationResult result, IReadOnlyDictionary<string, string> filesByPath, string rootPath)
     {
@@ -54,9 +39,8 @@ internal static class CodeEmitter
             indent = "    ";
         }
 
-        for (var i = 0; i < target.TypeChain.Count; i++)
+        foreach (var entry in target.TypeChain)
         {
-            var entry = target.TypeChain[i];
             sb.Append(indent).Append("partial ").Append(entry.Keyword).Append(' ').Append(entry.Name)
                 .Append('\n').Append(indent).Append("{\n");
             indent += "    ";
@@ -78,7 +62,7 @@ internal static class CodeEmitter
     private static void EmitBody(StringBuilder sb, string indent, AttributeTargetInfo target,
         HlslCompilationResult result, EmitContext context, List<EmitDiagnosticInfo> diagnostics)
     {
-        var typeName = target.TypeChain[target.TypeChain.Count - 1].Name;
+        var typeName = target.TypeChain[^1].Name;
 
         // --- Properties (Shader.PropertyToID cache) ------------------------------------------------
         sb.Append(indent).Append("public static class Properties\n").Append(indent).Append("{\n");
@@ -310,7 +294,10 @@ internal static class CodeEmitter
         return SanitizeIdentifier(kernelName);
     }
 
-    /// <summary>The generated <c>Set_&lt;name&gt;</c> member name for an HLSL identifier, kept verbatim (see docs/IMPLEMENTATION_PLAN.md §9 decisions: "HLSL name used as-is").</summary>
+    /// <summary>
+    ///     The generated <c>Set_&lt;name&gt;</c> member name for an HLSL identifier, kept verbatim (see
+    ///     docs/IMPLEMENTATION_PLAN.md §9 decisions: "HLSL name used as-is").
+    /// </summary>
     private static string SetterName(string hlslName)
     {
         return "Set" + PropertySeparator(hlslName) + SanitizeIdentifier(hlslName);
@@ -392,5 +379,19 @@ internal static class CodeEmitter
 
         return new EmitDiagnosticInfo(id, new EquatableArray<string>(args), context.RootPath,
             new LinePositionSpanInfo(0, 0, 0, 0));
+    }
+
+    /// <summary>
+    ///     Carries what <see cref="MakeDiagnostic" /> needs to turn an HLSL <see cref="TextSpan" /> into a file +
+    ///     line/column, without threading three separate parameters through every Emit* method.
+    /// </summary>
+    private readonly struct EmitContext(
+        SourceText source,
+        IReadOnlyDictionary<string, string> filesByPath,
+        string rootPath)
+    {
+        public SourceText Source { get; } = source;
+        public IReadOnlyDictionary<string, string> FilesByPath { get; } = filesByPath;
+        public string RootPath { get; } = rootPath;
     }
 }

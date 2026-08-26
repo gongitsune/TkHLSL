@@ -11,40 +11,6 @@ namespace TkHLSL.SourceGeneration.Emit;
 /// </summary>
 internal static class HlslTypeMap
 {
-    public readonly struct UniformMapping
-    {
-        public UniformMapping(string cSharpType, string setterMethod, int size)
-        {
-            CSharpType = cSharpType;
-            SetterMethod = setterMethod;
-            Size = size;
-        }
-
-        /// <summary>The scalar C# type (e.g. <c>float</c>, <c>Vector4</c>).</summary>
-        public string CSharpType { get; }
-
-        /// <summary>The <c>ComputeShader</c> method base name (e.g. <c>SetFloat</c>) — append <c>Array</c> for the array overload.</summary>
-        public string SetterMethod { get; }
-
-        /// <summary>The HLSL constant-buffer packing size in bytes, used by the struct-packing check.</summary>
-        public int Size { get; }
-    }
-
-    public readonly struct FieldMapping
-    {
-        public FieldMapping(string cSharpType, int size)
-        {
-            CSharpType = cSharpType;
-            Size = size;
-        }
-
-        /// <summary>The C# field type for a generated element struct.</summary>
-        public string CSharpType { get; }
-
-        /// <summary>The HLSL constant-buffer packing size in bytes.</summary>
-        public int Size { get; }
-    }
-
     public static bool TryMapUniform(string hlslType, out UniformMapping mapping)
     {
         switch (hlslType)
@@ -119,5 +85,26 @@ internal static class HlslTypeMap
                 mapping = default;
                 return false;
         }
+    }
+
+    public readonly struct UniformMapping(string cSharpType, string setterMethod, int size)
+    {
+        /// <summary>The scalar C# type (e.g. <c>float</c>, <c>Vector4</c>).</summary>
+        public string CSharpType { get; } = cSharpType;
+
+        /// <summary>The <c>ComputeShader</c> method base name (e.g. <c>SetFloat</c>) — append <c>Array</c> for the array overload.</summary>
+        public string SetterMethod { get; } = setterMethod;
+
+        /// <summary>The HLSL constant-buffer packing size in bytes, used by the struct-packing check.</summary>
+        public int Size { get; } = size;
+    }
+
+    public readonly struct FieldMapping(string cSharpType, int size)
+    {
+        /// <summary>The C# field type for a generated element struct.</summary>
+        public string CSharpType { get; } = cSharpType;
+
+        /// <summary>The HLSL constant-buffer packing size in bytes.</summary>
+        public int Size { get; } = size;
     }
 }

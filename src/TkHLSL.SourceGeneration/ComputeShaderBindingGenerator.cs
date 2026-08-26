@@ -1,4 +1,3 @@
-using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -58,13 +57,13 @@ public sealed class ComputeShaderBindingGenerator : IIncrementalGenerator
 
         var defines = Array.Empty<string>();
         foreach (var namedArg in attributeData.NamedArguments)
-            if (namedArg.Key == "Defines" && namedArg.Value.Values is { IsDefault: false } values)
+            if (namedArg is { Key: "Defines", Value.Values: { IsDefault: false } values })
             {
                 var list = new List<string>(values.Length);
                 foreach (var v in values)
                     if (v.Value is string s)
                         list.Add(s);
-                defines = list.ToArray();
+                defines = [.. list];
             }
 
         var chain = new List<TypeChainEntry>();
@@ -90,7 +89,7 @@ public sealed class ComputeShaderBindingGenerator : IIncrementalGenerator
 
         return new AttributeTargetInfo(
             ns,
-            new EquatableArray<TypeChainEntry>(chain.ToArray()),
+            new EquatableArray<TypeChainEntry>([.. chain]),
             isPartial,
             path,
             new EquatableArray<string>(defines),

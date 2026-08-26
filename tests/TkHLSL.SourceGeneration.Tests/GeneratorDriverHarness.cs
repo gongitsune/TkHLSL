@@ -1,9 +1,8 @@
 using System.Collections.Immutable;
-using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
-using TkHLSL.SourceGeneration;
+using TkHLSL.Unity;
 
 namespace TkHLSL.SourceGeneration.Tests;
 
@@ -16,10 +15,6 @@ namespace TkHLSL.SourceGeneration.Tests;
 /// </summary>
 internal static class GeneratorDriverHarness
 {
-    public readonly record struct Result(
-        ImmutableArray<Diagnostic> Diagnostics,
-        IReadOnlyDictionary<string, string> GeneratedSources);
-
     public static Result Run(string userSource, params (string Path, string Content)[] additionalFiles)
     {
         var compilation = CSharpCompilation.Create(
@@ -49,31 +44,32 @@ internal static class GeneratorDriverHarness
         return new Result(runResult.Diagnostics, sources);
     }
 
-    /// <summary>Every runtime assembly the current process was loaded with, plus TkHLSL.Unity — the simplest reliable way to get a complete BCL reference set for an in-process test compilation.</summary>
+    /// <summary>
+    ///     Every runtime assembly the current process was loaded with, plus TkHLSL.Unity — the simplest reliable way to
+    ///     get a complete BCL reference set for an in-process test compilation.
+    /// </summary>
     private static IReadOnlyList<MetadataReference> GetReferences()
     {
         var trustedPlatformAssemblies =
-            (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string)?.Split(System.IO.Path.PathSeparator) ?? [];
+            (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string)?.Split(Path.PathSeparator) ?? [];
 
         var references = new List<MetadataReference>(trustedPlatformAssemblies.Length + 1);
         foreach (var path in trustedPlatformAssemblies)
             references.Add(MetadataReference.CreateFromFile(path));
 
-        references.Add(MetadataReference.CreateFromFile(typeof(Unity.ComputeShaderBindingAttribute).Assembly.Location));
+        references.Add(MetadataReference.CreateFromFile(typeof(ComputeShaderBindingAttribute).Assembly.Location));
         return references;
     }
 
-    private sealed class InMemoryAdditionalText : AdditionalText
+    public readonly record struct Result(
+        ImmutableArray<Diagnostic> Diagnostics,
+        IReadOnlyDictionary<string, string> GeneratedSources);
+
+    private sealed class InMemoryAdditionalText(string path, string content) : AdditionalText
     {
-        private readonly SourceText _text;
+        private readonly SourceText _text = SourceText.From(content);
 
-        public InMemoryAdditionalText(string path, string content)
-        {
-            Path = path;
-            _text = SourceText.From(content);
-        }
-
-        public override string Path { get; }
+        public override string Path { get; } = path;
 
         public override SourceText GetText(CancellationToken cancellationToken = default)
         {

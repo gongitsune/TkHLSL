@@ -1,5 +1,8 @@
+using TkHLSL.Diagnostics;
+using TkHLSL.Model;
 using TkHLSL.Preprocessing;
 using TkHLSL.SourceGeneration.Emit;
+using TkHLSL.Text;
 
 namespace TkHLSL.SourceGeneration;
 
@@ -20,7 +23,7 @@ internal static class PipelineCompute
 
         if (!target.IsPartial)
             return new GenerationResult(hintName, null,
-                Single("TKH1003", target, target.TypeChain[target.TypeChain.Count - 1].Name));
+                Single("TKH1003", target, target.TypeChain[^1].Name));
 
         var paths = new List<string>(files.Count);
         foreach (var f in files) paths.Add(f.NormalizedPath);
@@ -46,7 +49,7 @@ internal static class PipelineCompute
         var hasError = false;
         foreach (var d in result.Diagnostics)
         {
-            var id = d.Severity == TkHLSL.Diagnostics.DiagnosticSeverity.Error ? "TKH0001" : "TKH0002";
+            var id = d.Severity == DiagnosticSeverity.Error ? "TKH0001" : "TKH0002";
             if (id == "TKH0001") hasError = true;
             diagnostics.Add(MakeHlslDiagnostic(id, result, d.Span, filesByPath, chosenPath, chosenText, d.Message));
         }
@@ -89,19 +92,16 @@ internal static class PipelineCompute
     ///     reported <see cref="Microsoft.CodeAnalysis.Location" /> points at the actual <c>.compute</c>/
     ///     <c>.cginc</c> line, not just the root file.
     /// </summary>
-    internal static EmitDiagnosticInfo MakeHlslDiagnostic(string id, TkHLSL.Model.HlslCompilationResult result,
-        TkHLSL.Text.TextSpan span, IReadOnlyDictionary<string, string> filesByPath, string fallbackPath,
+    private static EmitDiagnosticInfo MakeHlslDiagnostic(string id, HlslCompilationResult result,
+        TextSpan span, IReadOnlyDictionary<string, string> filesByPath, string fallbackPath,
         string fallbackText, params string[] args)
     {
-        if (result.Source.TryGetLocation(span.Start, out var segment, out var offsetInFile))
-        {
-            var path = segment.Path.Length == 0 ? fallbackPath : segment.Path;
-            var text = filesByPath.TryGetValue(path, out var t) ? t : fallbackText;
-            return new EmitDiagnosticInfo(id, new EquatableArray<string>(args), path,
-                LineMap.GetLinePositionSpan(text, offsetInFile, span.Length));
-        }
-
-        return new EmitDiagnosticInfo(id, new EquatableArray<string>(args), fallbackPath,
-            new LinePositionSpanInfo(0, 0, 0, 0));
+        if (!result.Source.TryGetLocation(span.Start, out var segment, out var offsetInFile))
+            return new EmitDiagnosticInfo(id, new EquatableArray<string>(args), fallbackPath,
+                new LinePositionSpanInfo(0, 0, 0, 0));
+        var path = segment.Path.Length == 0 ? fallbackPath : segment.Path;
+        var text = filesByPath.TryGetValue(path, out var t) ? t : fallbackText;
+        return new EmitDiagnosticInfo(id, new EquatableArray<string>(args), path,
+            LineMap.GetLinePositionSpan(text, offsetInFile, span.Length));
     }
 }
