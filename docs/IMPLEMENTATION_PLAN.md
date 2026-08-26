@@ -1,8 +1,8 @@
-# Tk.Hlsl 実装計画
+# TkHLSL 実装計画
 
-このドキュメントは Tk.Hlsl（旧 TkHLSL）の設計メモ兼ロードマップです。開発者本人が読み返し、フェーズごとの実装を進める際の指針として使う「生きたドキュメント」であり、フェーズが進むごとに更新します。
+このドキュメントは TkHLSL（旧 TkHLSL）の設計メモ兼ロードマップです。開発者本人が読み返し、フェーズごとの実装を進める際の指針として使う「生きたドキュメント」であり、フェーズが進むごとに更新します。
 
-> **方針転換（Phase 7〜10）**: §1・§7.3・§12・§13 が述べていた「Roslyn Analyzer / Source Generator は実装しない、外部ライブラリに委ねる」という当初方針は撤回しました。Unity 6 で実際に使うにあたり、同一ソリューション内に Source Generator（`src/Tk.Hlsl.SourceGeneration`）を実装する方針に変更しています。以下の §1 の記述は歴史的経緯として残しつつ、実際の構成は §14 を参照してください。
+> **方針転換（Phase 7〜10）**: §1・§7.3・§12・§13 が述べていた「Roslyn Analyzer / Source Generator は実装しない、外部ライブラリに委ねる」という当初方針は撤回しました。Unity 6 で実際に使うにあたり、同一ソリューション内に Source Generator（`src/TkHLSL.SourceGeneration`）を実装する方針に変更しています。以下の §1 の記述は歴史的経緯として残しつつ、実際の構成は §14 を参照してください。
 
 ## 1. 概要（Phase 0〜6 時点の記述、§14 で更新）
 
@@ -403,21 +403,21 @@ naga の `valid::analyzer`（§2.3）に倣い、旧案の「関数本体の軽�
 
 ## 14. Phase 7〜10: Roslyn Source Generator の実装（方針転換後）
 
-Unity 6 で実際に使うにあたり、§1・§13 の「Roslyn Analyzer/Source Generator は外部ライブラリの責務」という当初方針を撤回し、同一ソリューション内に実装した。リポジトリ全体を `TkHLSL` → `Tk.Hlsl` にリネームし、`src/`・`tests/`・`samples/`・`packages/` に再編成している（旧 `TkHLSL` プロジェクトは `src/Tk.Hlsl`）。
+Unity 6 で実際に使うにあたり、§1・§13 の「Roslyn Analyzer/Source Generator は外部ライブラリの責務」という当初方針を撤回し、同一ソリューション内に実装した。リポジトリ全体を `TkHLSL` → `TkHLSL` にリネームし、`src/`・`tests/`・`samples/`・`packages/` に再編成している（旧 `TkHLSL` プロジェクトは `src/TkHLSL`）。
 
 ### 14.1 構成
 
 ```
-Tk.Hlsl.slnx
+TkHLSL.slnx
 src/
-  Tk.Hlsl/                        netstandard2.0;net10.0   パーサー本体（旧 TkHLSL）
-  Tk.Hlsl.Unity/                  netstandard2.0            [ComputeShaderBinding] 属性のみ、依存ゼロ
-  Tk.Hlsl.SourceGeneration/       netstandard2.0             IIncrementalGenerator
+  TkHLSL/                        netstandard2.0;net10.0   パーサー本体（旧 TkHLSL）
+  TkHLSL.Unity/                  netstandard2.0            [ComputeShaderBinding] 属性のみ、依存ゼロ
+  TkHLSL.SourceGeneration/       netstandard2.0             IIncrementalGenerator
 tests/
-  Tk.Hlsl.Tests/                  net10.0
-  Tk.Hlsl.SourceGeneration.Tests/ net10.0
+  TkHLSL.Tests/                  net10.0
+  TkHLSL.SourceGeneration.Tests/ net10.0
 samples/
-  Tk.Hlsl.Example/                net10.0
+  TkHLSL.Example/                net10.0
 packages/
   jp.keigo.tk-hlsl/                                          UPM パッケージ（DLL は build.sh で生成、未コミット）
 ```
@@ -426,11 +426,11 @@ packages/
 
 Source Generator が `StructuredBuffer<T>` の要素 struct や `cbuffer` メンバー単位の setter を生成できるよう、`TopLevelParser` を拡張して `struct`/`cbuffer` の本体を実際にパースするようにした（従来は本体をスキップするだけだった）。`Ir.StructDefinition`/`Ir.StructMember` を新設し、`Module.Structs`（`Arena<StructDefinition>`）と `GlobalVariable.Members` に格納。公開モデルには `Model.HlslStruct`/`Model.HlslField` を追加し、`ResourceBinding.Fields`（cbuffer メンバー）と `HlslCompilationResult.Structs`（全 struct 宣言）として公開している。メンバー解析はベストエフォート（構文的に解釈できないメンバーは診断を出さずに次の `;` までスキップ）。
 
-### 14.3 Phase 8: `Tk.Hlsl.Unity`
+### 14.3 Phase 8: `TkHLSL.Unity`
 
-`ComputeShaderBindingAttribute(string path) { string[]? Defines }` のみを持つ、依存ゼロの netstandard2.0 ライブラリ。Generator は `ForAttributeWithMetadataName("Tk.Hlsl.Unity.ComputeShaderBindingAttribute")` でこれを検出する。
+`ComputeShaderBindingAttribute(string path) { string[]? Defines }` のみを持つ、依存ゼロの netstandard2.0 ライブラリ。Generator は `ForAttributeWithMetadataName("TkHLSL.Unity.ComputeShaderBindingAttribute")` でこれを検出する。
 
-### 14.4 Phase 9: `Tk.Hlsl.SourceGeneration`
+### 14.4 Phase 9: `TkHLSL.SourceGeneration`
 
 `Microsoft.CodeAnalysis.CSharp` 4.3.1（`ForAttributeWithMetadataName` の下限）を参照する `IIncrementalGenerator`。パイプラインはキャッシュが効くよう設計している：
 
@@ -444,10 +444,10 @@ Source Generator が `StructuredBuffer<T>` の要素 struct や `cbuffer` メン
 
 生成コード: `Emit.CodeEmitter` が `Properties`（`Shader.PropertyToID` キャッシュ）、コンストラクタ、カーネルごとの `readonly struct`（`NumThreadsX/Y/Z` 定数、`Set_<Name>` リソース setter、`DispatchThreads`/`DispatchGroups`）、外側レベルの plain global／cbuffer メンバー setter（`Emit.HlslTypeMap` で HLSL 型→C# 型／`ComputeShader.Set*` メソッドへ変換）、`StructuredBuffer<T>` 系列が参照するユーザー struct の `[StructLayout(Sequential)]` 要素構造体を出力する。命名規則は「HLSL 名をそのまま使う」（決定事項どおり）。
 
-テストは `Tk.Hlsl.SourceGeneration.Tests`（15 件）: `Microsoft.CodeAnalysis.CSharp.SourceGenerators.Testing.XUnit`（`TestBehaviors.SkipGeneratedSourcesCheck` を指定し、生成ファイル一覧の完全一致ではなく「UnityStub 込みでコンパイルが通るか」を検証）による end-to-end テストと、`GeneratorDriver` を直接駆動する `GeneratorDriverHarness` による診断 ID・生成コード内容・決定性のテストの二本立て。
+テストは `TkHLSL.SourceGeneration.Tests`（15 件）: `Microsoft.CodeAnalysis.CSharp.SourceGenerators.Testing.XUnit`（`TestBehaviors.SkipGeneratedSourcesCheck` を指定し、生成ファイル一覧の完全一致ではなく「UnityStub 込みでコンパイルが通るか」を検証）による end-to-end テストと、`GeneratorDriver` を直接駆動する `GeneratorDriverHarness` による診断 ID・生成コード内容・決定性のテストの二本立て。
 
 ### 14.5 Phase 10: UPM パッケージ
 
-`packages/jp.keigo.tk-hlsl/`（`package.json`, `README.md`, `build.sh`）。DLL 本体と対応する `.meta` は `build.sh` が `dotnet build -c Release` から `Runtime/` に生成するもので、リポジトリにはコミットしていない（`.gitignore` 参照）。`.meta` の GUID は `build.sh` にハードコードされた固定値で、再実行してもアセット ID は変わらない。`Tk.Hlsl.SourceGeneration.dll`/`Tk.Hlsl.dll`/（存在すれば）`System.Memory.dll` には `RoslynAnalyzer` ラベルを付け、全プラットフォームのビルド対象から除外している。
+`packages/jp.keigo.tk-hlsl/`（`package.json`, `README.md`, `build.sh`）。DLL 本体と対応する `.meta` は `build.sh` が `dotnet build -c Release` から `Runtime/` に生成するもので、リポジトリにはコミットしていない（`.gitignore` 参照）。`.meta` の GUID は `build.sh` にハードコードされた固定値で、再実行してもアセット ID は変わらない。`TkHLSL.SourceGeneration.dll`/`TkHLSL.dll`/（存在すれば）`System.Memory.dll` には `RoslynAnalyzer` ラベルを付け、全プラットフォームのビルド対象から除外している。
 
 **未検証の残課題**（`packages/jp.keigo.tk-hlsl/README.md` の「Known unknowns」参照）: パッケージ内の `RoslynAnalyzer` ラベル付き DLL が実際に利用者側アセンブリへ適用されるかは、実機の Unity 6 プロジェクトで確認できていない。効かない場合は `Assets/` 直下への直接配置にフォールバックする方針。

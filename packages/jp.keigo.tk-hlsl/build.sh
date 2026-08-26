@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Tk.Hlsl, Tk.Hlsl.Unity, and Tk.Hlsl.SourceGeneration in Release and copies the resulting
+# Builds TkHLSL, TkHLSL.Unity, and TkHLSL.SourceGeneration in Release and copies the resulting
 # assemblies into Runtime/, alongside a generated .meta file for each (see docs/IMPLEMENTATION_PLAN.md
 # §9 Phase 10). The DLLs and their .meta files are NOT checked into source control — run this script
 # to (re)populate Runtime/ before importing this folder as a Unity package. .meta GUIDs below are
@@ -11,9 +11,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUNTIME_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Runtime"
 
 echo "Building Release..."
-dotnet build "$ROOT/src/Tk.Hlsl.Unity/Tk.Hlsl.Unity.csproj" -c Release
-dotnet build "$ROOT/src/Tk.Hlsl/Tk.Hlsl.csproj" -c Release -f netstandard2.0
-dotnet build "$ROOT/src/Tk.Hlsl.SourceGeneration/Tk.Hlsl.SourceGeneration.csproj" -c Release
+dotnet build "$ROOT/src/TkHLSL.Unity/TkHLSL.Unity.csproj" -c Release
+dotnet build "$ROOT/src/TkHLSL/TkHLSL.csproj" -c Release -f netstandard2.0
+dotnet build "$ROOT/src/TkHLSL.SourceGeneration/TkHLSL.SourceGeneration.csproj" -c Release
 
 mkdir -p "$RUNTIME_DIR"
 
@@ -27,13 +27,13 @@ copy_dll() {
   fi
 }
 
-copy_dll "$ROOT/src/Tk.Hlsl.Unity/bin/Release/netstandard2.0/Tk.Hlsl.Unity.dll" "Tk.Hlsl.Unity.dll"
-copy_dll "$ROOT/src/Tk.Hlsl/bin/Release/netstandard2.0/Tk.Hlsl.dll" "Tk.Hlsl.dll"
-copy_dll "$ROOT/src/Tk.Hlsl.SourceGeneration/bin/Release/netstandard2.0/Tk.Hlsl.SourceGeneration.dll" \
-  "Tk.Hlsl.SourceGeneration.dll"
+copy_dll "$ROOT/src/TkHLSL.Unity/bin/Release/netstandard2.0/TkHLSL.Unity.dll" "TkHLSL.Unity.dll"
+copy_dll "$ROOT/src/TkHLSL/bin/Release/netstandard2.0/TkHLSL.dll" "TkHLSL.dll"
+copy_dll "$ROOT/src/TkHLSL.SourceGeneration/bin/Release/netstandard2.0/TkHLSL.SourceGeneration.dll" \
+  "TkHLSL.SourceGeneration.dll"
 # Only present if System.Memory's runtime assembly was actually needed for this SDK/TFM combo —
 # see the "System.Memory" note in this package's README.
-copy_dll "$ROOT/src/Tk.Hlsl/bin/Release/netstandard2.0/System.Memory.dll" "System.Memory.dll"
+copy_dll "$ROOT/src/TkHLSL/bin/Release/netstandard2.0/System.Memory.dll" "System.Memory.dll"
 
 # --- .meta generation --------------------------------------------------------------------------
 
@@ -107,9 +107,9 @@ EOF
 
 # Fixed GUIDs — do not change once this package has shipped; a changed GUID breaks every scene/
 # asmdef reference a consuming project already has to that DLL.
-write_runtime_plugin_meta  "a1b6c8f0d3e4415a9b6c7d2e1f4a5b6c" "Tk.Hlsl.Unity.dll"
-write_analyzer_plugin_meta "b2c7d9e1f4053526ac7d8e3f2a5b6c7d" "Tk.Hlsl.dll"
-write_analyzer_plugin_meta "c3d8eaf205164637bd8e9f4a3b6c7d8e" "Tk.Hlsl.SourceGeneration.dll"
+write_runtime_plugin_meta  "a1b6c8f0d3e4415a9b6c7d2e1f4a5b6c" "TkHLSL.Unity.dll"
+write_analyzer_plugin_meta "b2c7d9e1f4053526ac7d8e3f2a5b6c7d" "TkHLSL.dll"
+write_analyzer_plugin_meta "c3d8eaf205164637bd8e9f4a3b6c7d8e" "TkHLSL.SourceGeneration.dll"
 write_analyzer_plugin_meta "d4e9fb0316275748ce9fa05b4c7d8e9f" "System.Memory.dll"
 
 echo "Done. Runtime/ is ready to import as a local Unity package."

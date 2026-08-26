@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+        <LangVersion>14.0</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageId>TkHLSL</PackageId>
+        <Version>0.1.0</Version>
+        <Authors>keigo</Authors>
+        <Description>HLSL Compute Shader analysis library: parses kernel declarations and top-level resource declarations (buffers, textures, samplers, cbuffers) and resolves, per kernel, which resources it reads or writes. Consumed by TkHLSL.SourceGeneration to generate Unity C# bindings — see docs/IMPLEMENTATION_PLAN.md.</Description>
+        <PackageTags>hlsl;compute-shader;unity;shader-parser;source-generator</PackageTags>
+        <!-- PackageLicenseExpression intentionally omitted: no license has been chosen for this
+             repository yet (no LICENSE file exists). Set this once that decision is made. -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Pinned to 4.5.5 (not the newest) so this assembly's System.Memory reference matches
+             what Roslyn itself ships when TkHLSL.SourceGeneration loads inside Unity's/VS's compiler
+             host — a newer minor version here risks a binding failure at analyzer load time. -->
+        <PackageReference Include="System.Memory" Version="4.5.5" Condition="'$(TargetFramework)' == 'netstandard2.0'"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="PolySharp" Version="1.16.0">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+    </ItemGroup>
+
+</Project>
