@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>10.0</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageId>Tk.Hlsl.Unity</PackageId>
+        <Version>0.1.0</Version>
+        <Authors>keigo</Authors>
+        <Description>Runtime attributes for Tk.Hlsl.SourceGeneration. Depends on nothing — not even
+            Tk.Hlsl itself — so it is safe to reference from any Unity assembly without pulling in the
+            HLSL parser or the generator.</Description>
+        <PackageTags>hlsl;compute-shader;unity;source-generator</PackageTags>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    </PropertyGroup>
+
+</Project>
