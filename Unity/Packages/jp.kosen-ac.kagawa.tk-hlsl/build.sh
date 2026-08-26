@@ -67,45 +67,4 @@ PluginImporter:
 EOF
 }
 
-write_analyzer_plugin_meta() {
-  local guid="$1" file="$2"
-  cat > "$RUNTIME_DIR/$file.meta" <<EOF
-fileFormatVersion: 2
-guid: $guid
-labels:
-- RoslynAnalyzer
-PluginImporter:
-  externalObjects: {}
-  serializedVersion: 2
-  iconMap: {}
-  executionOrder: {}
-  defineConstraints: []
-  isPreloaded: 0
-  isOverridable: 0
-  isExplicitlyReferenced: 0
-  validateReferences: 1
-  platformData:
-  - first:
-      Any:
-    second:
-      enabled: 0
-      settings: {}
-  - first:
-      Editor: Editor
-    second:
-      enabled: 0
-      settings:
-        DefaultValueInitialized: true
-  userData:
-  assetBundleName:
-  assetBundleVariant:
-EOF
-}
-
-# Fixed GUIDs — do not change once this package has shipped; a changed GUID breaks every scene/
-# asmdef reference a consuming project already has to that DLL.
-write_runtime_plugin_meta  "a1b6c8f0d3e4415a9b6c7d2e1f4a5b6c" "TkHLSL.Unity.dll"
-write_analyzer_plugin_meta "b2c7d9e1f4053526ac7d8e3f2a5b6c7d" "TkHLSL.dll"
-write_analyzer_plugin_meta "c3d8eaf205164637bd8e9f4a3b6c7d8e" "TkHLSL.SourceGeneration.dll"
-
 echo "Done. Runtime/ is ready to import as a local Unity package."
