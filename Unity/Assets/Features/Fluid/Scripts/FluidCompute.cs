@@ -12,6 +12,14 @@ namespace Features.Fluid.Scripts
     
     }
 
+    [ComputeShaderBinding(
+        "Assets/Features/Fluid/Computes/Marching Cubes.compute"
+    )]
+    public partial class McCompute
+    {
+        
+    }
+
     [Serializable]
     public class T
     {

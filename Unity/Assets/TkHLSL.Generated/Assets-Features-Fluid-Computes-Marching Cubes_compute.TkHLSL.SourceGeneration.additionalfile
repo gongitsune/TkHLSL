@@ -1,0 +1,9 @@
+tkhlsl-manifest	1
+root	Assets/Features/Fluid/Computes/Marching Cubes.compute
+defines
+input	Assets/Features/Fluid/Computes/Marching Cubes.compute
+loc	0	Assets/Features/Fluid/Computes/Marching Cubes.compute	5	20	5	26
+loc	1	Assets/Features/Fluid/Computes/Marching Cubes.compute	8	5	8	11
+resource	Result	RWTexture2D	float4	-	-	0
+kernel	CSMain	8	8	1	1
+bind	Result
