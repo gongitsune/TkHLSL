@@ -4,4 +4,6 @@ kernel CSMain [numthreads(8, 8, 1)]
   RWStructuredBuffer<float4> _Result : register(u0)
 unused:
   CBuffer Params
+    float4 _Params
+    int _Count
 diagnostics: (none)

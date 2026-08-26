@@ -13,8 +13,12 @@ namespace Tk.Hlsl.Model;
 public sealed record HlslCompilationResult(
     IReadOnlyList<KernelBindingInfo> Kernels,
     IReadOnlyList<ResourceBinding> AllResources,
-    IReadOnlyList<Diagnostic> Diagnostics)
+    IReadOnlyList<Diagnostic> Diagnostics,
+    IReadOnlyList<HlslStruct> Structs = null!)
 {
+    /// <summary>Every <c>struct</c> declaration found in the source, in declaration order.</summary>
+    public IReadOnlyList<HlslStruct> Structs { get; init; } = Structs ?? [];
+
     /// <summary>
     ///     The composite source every <see cref="TextSpan" /> in this result (every
     ///     <see cref="Ir.TokenRange" />-derived <c>Location</c> and every <see cref="Diagnostic.Span" />) is

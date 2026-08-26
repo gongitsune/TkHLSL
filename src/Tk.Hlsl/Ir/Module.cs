@@ -19,6 +19,12 @@ public sealed class Module
 {
     public UniqueArena<TypeInfo> Types { get; } = new();
 
+    /// <summary>
+    /// Every <c>struct</c> declaration's members, in declaration order. Unlike <see cref="Types"/>,
+    /// not deduplicated: each <c>struct</c> keyword in the source contributes one entry.
+    /// </summary>
+    public Arena<StructDefinition> Structs { get; } = new();
+
     public Arena<GlobalVariable> GlobalVariables { get; } = new();
 
     public Arena<Function> Functions { get; } = new();

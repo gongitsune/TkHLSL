@@ -42,10 +42,43 @@ public static class HlslParser
 
         var allResources = BuildAllResources(module);
         var kernels = BuildKernels(module, moduleInfo, allResources);
+        var structs = BuildStructs(module);
         var diagnostics =
             CombineDiagnostics(lexResult.Diagnostics, preprocessResult.Diagnostics, module.Diagnostics);
 
-        return new HlslCompilationResult(kernels, allResources, diagnostics) { Source = preprocessResult.Source };
+        return new HlslCompilationResult(kernels, allResources, diagnostics, structs)
+        {
+            Source = preprocessResult.Source
+        };
+    }
+
+    private static HlslStruct[] BuildStructs(Module module)
+    {
+        var count = module.Structs.Count;
+        if (count == 0) return [];
+
+        var structs = new HlslStruct[count];
+        for (var i = 0; i < count; i++)
+        {
+            var s = module.Structs[new Handle<StructDefinition>(i)];
+            structs[i] = new HlslStruct(s.Name, BuildFields(s.Members), s.Location);
+        }
+
+        return structs;
+    }
+
+    private static HlslField[] BuildFields(IReadOnlyList<StructMember> members)
+    {
+        if (members.Count == 0) return [];
+
+        var fields = new HlslField[members.Count];
+        for (var i = 0; i < members.Count; i++)
+        {
+            var m = members[i];
+            fields[i] = new HlslField(m.Name, m.TypeName, m.ArrayLength, m.Semantic, m.Location);
+        }
+
+        return fields;
     }
 
     private static ResourceBinding[] BuildAllResources(Module module)
@@ -62,7 +95,8 @@ public static class HlslParser
                 global.Kind,
                 global.ElementType is { } elementType ? module.Types[elementType].Name : null,
                 global.Register,
-                global.Location);
+                global.Location,
+                BuildFields(global.Members));
         }
 
         return resources;

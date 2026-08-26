@@ -13,9 +13,17 @@ namespace Tk.Hlsl.Ir;
 /// for resource kinds with no element type (<see cref="ResourceKind.SamplerState"/>,
 /// <see cref="ResourceKind.ByteAddressBuffer"/>, <see cref="ResourceKind.CBuffer"/>, etc.).
 /// </param>
+/// <param name="Members">
+/// The members declared inside a <c>cbuffer { ... }</c> block, in declaration order. Empty for every
+/// other <see cref="ResourceKind"/> (see docs/IMPLEMENTATION_PLAN.md §9 Phase 7).
+/// </param>
 public sealed record GlobalVariable(
     string Name,
     ResourceKind Kind,
     Handle<TypeInfo>? ElementType,
     ResourceRegister? Register,
-    TextSpan Location);
+    TextSpan Location,
+    IReadOnlyList<StructMember> Members = null!)
+{
+    public IReadOnlyList<StructMember> Members { get; init; } = Members ?? [];
+}

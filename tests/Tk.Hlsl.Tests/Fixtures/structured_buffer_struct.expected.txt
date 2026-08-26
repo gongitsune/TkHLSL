@@ -1,0 +1,9 @@
+kernel CSMain [numthreads(64, 1, 1)]
+  StructuredBuffer<Particle> _Particles : register(t0)
+  RWStructuredBuffer<Particle> _ParticlesOut : register(u0)
+structs:
+  struct Particle
+    float3 position
+    float3 velocity
+    float lifetime
+diagnostics: (none)

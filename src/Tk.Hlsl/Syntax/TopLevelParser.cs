@@ -28,6 +28,9 @@ public static class TopLevelParser
         "static", "const", "inline", "uniform", "groupshared", "volatile", "extern", "precise"
     ];
 
+    /// <summary>Additional qualifiers only meaningful on a <c>struct</c>/<c>cbuffer</c> member.</summary>
+    private static readonly string[] MemberQualifiers = ["row_major", "column_major"];
+
     public static Module Parse(string source, IReadOnlyList<Token> tokens, IReadOnlyList<string> kernelNames)
     {
         if (source is null) throw new ArgumentNullException(nameof(source));
@@ -187,11 +190,14 @@ public static class TopLevelParser
                 return SkipToNextTopLevelBoundary(i);
             }
 
+            var openBraceIndex = i;
             i = SkipBalanced(i, TokenKind.OpenBrace, TokenKind.CloseBrace, $"'struct {name}'");
+            var members = ParseMemberDeclarations(openBraceIndex + 1, i - 1);
 
             if (i < _count && At(i).Kind == TokenKind.Semicolon) i++;
 
             _module.Types.Insert(new TypeInfo(name));
+            _module.Structs.Add(new StructDefinition(name, members, nameToken.Span));
             return i;
         }
 
@@ -221,11 +227,156 @@ public static class TopLevelParser
                 return SkipToNextTopLevelBoundary(i);
             }
 
+            var openBraceIndex = i;
             i = SkipBalanced(i, TokenKind.OpenBrace, TokenKind.CloseBrace, $"'cbuffer {name}'");
+            var members = ParseMemberDeclarations(openBraceIndex + 1, i - 1);
 
             if (i < _count && At(i).Kind == TokenKind.Semicolon) i++;
 
-            _module.GlobalVariables.Add(new GlobalVariable(name, ResourceKind.CBuffer, null, register, nameToken.Span));
+            _module.GlobalVariables.Add(new GlobalVariable(name, ResourceKind.CBuffer, null, register, nameToken.Span,
+                members));
+            return i;
+        }
+
+        // --- struct / cbuffer member lists ---------------------------------------------------------
+
+        /// <summary>
+        ///     Parses <c>type name (array)? (: semantic)? (= initializer)? (, name ...)* ;</c>
+        ///     declarations between <paramref name="bodyStart" /> (just past the opening <c>{</c>) and
+        ///     <paramref name="bodyEnd" /> (the index of the closing <c>}</c>, exclusive). Best-effort: a
+        ///     member it cannot parse is skipped to the next top-level <c>;</c> within the body without
+        ///     raising a diagnostic — struct/cbuffer member syntax has more shapes (function-like macros
+        ///     expanded into members, template types, etc.) than this parser models, and this is metadata
+        ///     used for code generation, not a full grammar (see docs/IMPLEMENTATION_PLAN.md §9 Phase 7).
+        /// </summary>
+        private List<StructMember> ParseMemberDeclarations(int bodyStart, int bodyEnd)
+        {
+            var members = new List<StructMember>();
+            var i = bodyStart;
+
+            while (i < bodyEnd && i < _count)
+            {
+                var startI = i;
+                i = SkipQualifiers(i, MemberQualifiers);
+
+                if (i >= bodyEnd || At(i).Kind != TokenKind.Identifier)
+                {
+                    i = SkipMemberToBoundary(i, bodyEnd);
+                    if (i <= startI) i = startI + 1;
+                    continue;
+                }
+
+                var typeName = At(i).GetText(_source);
+                i++;
+
+                if (i >= bodyEnd || At(i).Kind != TokenKind.Identifier)
+                {
+                    i = SkipMemberToBoundary(i, bodyEnd);
+                    if (i <= startI) i = startI + 1;
+                    continue;
+                }
+
+                var parsedAny = false;
+                while (i < bodyEnd && At(i).Kind == TokenKind.Identifier)
+                {
+                    var nameToken = At(i);
+                    var name = nameToken.GetText(_source);
+                    i++;
+
+                    int? arrayLength = null;
+                    if (i < bodyEnd && At(i).Kind == TokenKind.OpenBracket)
+                    {
+                        var arrayEnd = SkipBalanced(i, TokenKind.OpenBracket, TokenKind.CloseBracket,
+                            $"'{name}' の配列宣言子 '['");
+                        if (arrayEnd - i >= 3 && At(i + 1).Kind == TokenKind.IntLiteral)
+                            arrayLength = ParseIntLiteralValue(At(i + 1).GetSpan(_source));
+                        i = arrayEnd;
+                    }
+
+                    string? semantic = null;
+                    if (i < bodyEnd && At(i).Kind == TokenKind.Colon)
+                    {
+                        i++;
+                        if (i < bodyEnd && At(i).Kind == TokenKind.Identifier)
+                        {
+                            semantic = At(i).GetText(_source);
+                            i++;
+                        }
+                    }
+
+                    i = SkipInitializer(i);
+
+                    members.Add(new StructMember(name, typeName, arrayLength, semantic, nameToken.Span));
+                    parsedAny = true;
+
+                    if (i < bodyEnd && At(i).Kind == TokenKind.Comma)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    break;
+                }
+
+                if (!parsedAny || i >= bodyEnd || At(i).Kind != TokenKind.Semicolon)
+                {
+                    i = SkipMemberToBoundary(i, bodyEnd);
+                    if (i <= startI) i = startI + 1;
+                    continue;
+                }
+
+                i++; // skip ';'
+            }
+
+            return members;
+        }
+
+        private int SkipQualifiers(int i, string[] qualifiers)
+        {
+            while (i < _count && At(i).Kind == TokenKind.Identifier && IsQualifier(At(i).GetSpan(_source), qualifiers))
+                i++;
+            return i;
+        }
+
+        private static bool IsQualifier(ReadOnlySpan<char> text, string[] qualifiers)
+        {
+            foreach (var t in qualifiers)
+                if (text.SequenceEqual(t.AsSpan()))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>
+        ///     Recovery for a member declaration this parser could not make sense of: scans forward
+        ///     (tracking paren/brace/bracket depth) to the next <c>;</c> at body-top-level within
+        ///     <paramref name="bodyEnd" />, consuming it, or to <paramref name="bodyEnd" /> itself.
+        /// </summary>
+        private int SkipMemberToBoundary(int i, int bodyEnd)
+        {
+            var depth = 0;
+            while (i < bodyEnd && i < _count)
+            {
+                var kind = At(i).Kind;
+                switch (kind)
+                {
+                    case TokenKind.EndOfFile:
+                        return i;
+                    case TokenKind.OpenParen or TokenKind.OpenBrace or TokenKind.OpenBracket:
+                        depth++;
+                        break;
+                    case TokenKind.CloseParen or TokenKind.CloseBrace or TokenKind.CloseBracket:
+                    {
+                        if (depth > 0) depth--;
+                        break;
+                    }
+                    case TokenKind.Semicolon when depth == 0:
+                        return i + 1;
+                }
+
+                i++;
+            }
+
             return i;
         }
 

@@ -1,0 +1,19 @@
+#pragma kernel CSMain
+
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float lifetime;
+};
+
+StructuredBuffer<Particle> _Particles : register(t0);
+RWStructuredBuffer<Particle> _ParticlesOut : register(u0);
+
+[numthreads(64,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    Particle p = _Particles[id.x];
+    p.position += p.velocity;
+    _ParticlesOut[id.x] = p;
+}

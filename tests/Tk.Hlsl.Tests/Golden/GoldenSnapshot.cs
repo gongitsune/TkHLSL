@@ -39,6 +39,17 @@ internal static class GoldenSnapshot
                 AppendBinding(sb, resource, "  ");
         }
 
+        if (result.Structs.Count > 0)
+        {
+            sb.Append("structs:\n");
+            foreach (var s in result.Structs)
+            {
+                sb.Append("  struct ").Append(s.Name).Append('\n');
+                foreach (var field in s.Fields)
+                    AppendField(sb, field, "    ");
+            }
+        }
+
         if (result.Diagnostics.Count == 0)
         {
             sb.Append("diagnostics: (none)\n");
@@ -67,6 +78,19 @@ internal static class GoldenSnapshot
         sb.Append(' ').Append(binding.Name);
         if (binding.ExplicitRegister is { } register)
             sb.Append(" : ").Append(register);
+        sb.Append('\n');
+
+        foreach (var field in binding.Fields)
+            AppendField(sb, field, indent + "  ");
+    }
+
+    private static void AppendField(StringBuilder sb, HlslField field, string indent)
+    {
+        sb.Append(indent).Append(field.TypeName).Append(' ').Append(field.Name);
+        if (field.ArrayLength is { } arrayLength)
+            sb.Append('[').Append(arrayLength).Append(']');
+        if (field.Semantic is { } semantic)
+            sb.Append(" : ").Append(semantic);
         sb.Append('\n');
     }
 }

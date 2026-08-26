@@ -149,7 +149,45 @@ public class TopLevelParserTests
     }
 
     [Fact]
-    public void Parse_CBuffer_RecordsAsSingleGlobalVariableWithRegisterAndSkipsMembers()
+    public void Parse_StructDeclaration_RecordsMembersWithArrayLengthAndSemantic()
+    {
+        const string source = "struct Vertex { float3 position : POSITION; float2 uv[2]; };\n";
+
+        var module = ParseModule(source);
+
+        Assert.Empty(module.Diagnostics);
+        var s = Assert.Single(module.Structs);
+        Assert.Equal("Vertex", s.Name);
+        Assert.Equal(2, s.Members.Count);
+
+        Assert.Equal("position", s.Members[0].Name);
+        Assert.Equal("float3", s.Members[0].TypeName);
+        Assert.Null(s.Members[0].ArrayLength);
+        Assert.Equal("POSITION", s.Members[0].Semantic);
+
+        Assert.Equal("uv", s.Members[1].Name);
+        Assert.Equal("float2", s.Members[1].TypeName);
+        Assert.Equal(2, s.Members[1].ArrayLength);
+        Assert.Null(s.Members[1].Semantic);
+    }
+
+    [Fact]
+    public void Parse_StructDeclaration_SupportsMultipleDeclaratorsPerType()
+    {
+        const string source = "struct Pair { float a, b; };\n";
+
+        var module = ParseModule(source);
+
+        Assert.Empty(module.Diagnostics);
+        var s = Assert.Single(module.Structs);
+        Assert.Equal(2, s.Members.Count);
+        Assert.Equal("a", s.Members[0].Name);
+        Assert.Equal("b", s.Members[1].Name);
+        Assert.All(s.Members, m => Assert.Equal("float", m.TypeName));
+    }
+
+    [Fact]
+    public void Parse_CBuffer_RecordsAsSingleGlobalVariableWithRegisterAndMembers()
     {
         const string source = "cbuffer Params : register(b0)\n{\n    float4 _Params;\n    int _Count;\n};\n";
 
@@ -162,6 +200,12 @@ public class TopLevelParserTests
         Assert.Equal('b', global.Register!.Value.SlotType);
         Assert.Equal(0, global.Register.Value.SlotIndex);
         Assert.Empty(module.Diagnostics);
+
+        Assert.Equal(2, global.Members.Count);
+        Assert.Equal("_Params", global.Members[0].Name);
+        Assert.Equal("float4", global.Members[0].TypeName);
+        Assert.Equal("_Count", global.Members[1].Name);
+        Assert.Equal("int", global.Members[1].TypeName);
     }
 
     [Fact]
@@ -174,6 +218,37 @@ public class TopLevelParserTests
         var global = Assert.Single(module.GlobalVariables);
         Assert.Null(global.Register);
         Assert.Empty(module.Diagnostics);
+        var member = Assert.Single(global.Members);
+        Assert.Equal("_Params", member.Name);
+    }
+
+    [Fact]
+    public void Parse_CBuffer_SkipsRowMajorQualifierOnMember()
+    {
+        const string source = "cbuffer Params\n{\n    row_major float4x4 _World;\n};\n";
+
+        var module = ParseModule(source);
+
+        Assert.Empty(module.Diagnostics);
+        var global = Assert.Single(module.GlobalVariables);
+        var member = Assert.Single(global.Members);
+        Assert.Equal("_World", member.Name);
+        Assert.Equal("float4x4", member.TypeName);
+    }
+
+    [Fact]
+    public void Parse_CBuffer_MemberAccess_DoesNotThrow_WhenBodyIsMalformed()
+    {
+        const string source = "cbuffer Params\n{\n    !!!;\n    float4 _Params;\n};\n";
+
+        var module = ParseModule(source);
+
+        var global = Assert.Single(module.GlobalVariables);
+        // Best-effort recovery: the malformed leading token is skipped without raising a
+        // diagnostic (struct/cbuffer member parsing is metadata for codegen, not full grammar —
+        // see docs/IMPLEMENTATION_PLAN.md §9 Phase 7), and the well-formed member after it is
+        // still recorded.
+        Assert.Contains(global.Members, m => m.Name == "_Params");
     }
 
     [Fact]
