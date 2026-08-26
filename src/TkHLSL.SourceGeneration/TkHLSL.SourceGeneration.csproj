@@ -22,8 +22,9 @@
             from AdditionalFiles and generates typed C# bindings — per-kernel resource setters,
             DispatchThreads/DispatchGroups, cbuffer member setters, and StructuredBuffer element
             structs — for types marked with [TkHLSL.Unity.ComputeShaderBinding]. Does not touch disk:
-            every .compute/.hlsl/.cginc it reads must be a Roslyn AdditionalFile. See
-            docs/IMPLEMENTATION_PLAN.md §9 Phase 9.</Description>
+            every .compute/.hlsl/.cginc it reads must be a Roslyn AdditionalFile, or (in the TkHLSL.Unity
+            package) a pre-analyzed *.additionalfile shader manifest the package's Editor-side importer
+            writes automatically. See docs/IMPLEMENTATION_PLAN.md §9 Phase 9 and §14.6.</Description>
         <PackageTags>hlsl;compute-shader;unity;source-generator;roslyn</PackageTags>
         <DevelopmentDependency>true</DevelopmentDependency>
         <NoWarn>$(NoWarn);NU5128</NoWarn>
@@ -42,6 +43,12 @@
 
     <ItemGroup>
         <ProjectReference Include="..\TkHLSL\TkHLSL.csproj" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Lets tests exercise ShaderManifest (internal — it also ships linked, unmodified, into
+             the Unity package's Editor assembly, so it stays internal here rather than public API). -->
+        <InternalsVisibleTo Include="TkHLSL.SourceGeneration.Tests" />
     </ItemGroup>
 
     <!-- An analyzer/generator NuGet package must ship its own dependencies alongside itself under

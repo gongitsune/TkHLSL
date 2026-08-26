@@ -435,12 +435,12 @@ Source Generator が `StructuredBuffer<T>` の要素 struct や `cbuffer` メン
 `Microsoft.CodeAnalysis.CSharp` 4.3.1（`ForAttributeWithMetadataName` の下限）を参照する `IIncrementalGenerator`。パイプラインはキャッシュが効くよう設計している：
 
 - `ForAttributeWithMetadataName` の結果は即座に `AttributeTargetInfo`（構造的に等価な record。`INamedTypeSymbol` は保持しない）に射影する。
-- `AdditionalTextsProvider` を `.compute`/`.hlsl`/`.cginc`/`.hlslinc` 拡張子でフィルタし、`AdditionalHlslFile`（パス＋テキストの record）に射影して `Collect()` した後、`EquatableArray<T>`（要素等価な配列ラッパー、本 Generator 専用に実装）に変換する。
-- `PipelineCompute.Compute` が実際の解析（`HlslParser.Parse`）とコード生成（`Emit.CodeEmitter.Emit`）を行う、入力に対して純粋な関数。Roslyn の `Diagnostic`/`Location` は使わず、`EmitDiagnosticInfo`（記述子 ID・引数・ファイルパス・`LinePositionSpanInfo`）という値型で結果を表現し、`RegisterSourceOutput` 内で初めて実際の `Diagnostic`/`Location` に変換する。
+- `AdditionalTextsProvider` を2系統に分けて購読する：`.compute`/`.hlsl`/`.cginc`/`.hlslinc` 拡張子（生ファイル、`AdditionalHlslFile` に射影）と `.additionalfile` 拡張子（Unity Editor 側が書き出す解析済みシェーダーマニフェスト — §14.6 参照、同じく `AdditionalHlslFile` の形で内容を保持し `PipelineCompute` 側で構造化データとして再解釈する）。どちらも `Collect()` した後 `EquatableArray<T>`（要素等価な配列ラッパー、本 Generator 専用に実装）に変換する。
+- `PipelineCompute.Compute` が実際の解析（生ファイルなら `HlslParser.Parse`、マニフェストなら `ShaderManifest.TryRead`）とコード生成（`Emit.CodeEmitter.Emit`）を行う、入力に対して純粋な関数。Roslyn の `Diagnostic`/`Location` は使わず、`EmitDiagnosticInfo`（記述子 ID・引数・ファイルパス・`LinePositionSpanInfo`）という値型で結果を表現し、`RegisterSourceOutput` 内で初めて実際の `Diagnostic`/`Location` に変換する。位置解決は `Emit.IEmitLocationResolver` 経由に統一し、生ファイル経路（`SourceTextLocationResolver`）とマニフェスト経路（`ManifestLocationResolver`）を差し替え可能にしている。
 
-対象ファイルの解決は `AdditionalFileIncludeResolver`（`IIncludeResolver` 実装、ディスクに一切触れない）で、`#include` もこの仕組みで解決する。パス照合は `PathMatching`（`/` 区切りに正規化したうえでのセグメント単位サフィックス一致）で行う。
+対象ファイルの解決は、生ファイル経路では `AdditionalFileIncludeResolver`（`IIncludeResolver` 実装、ディスクに一切触れない）、`#include` もこの仕組みで解決する。パス照合は `PathMatching`（`/` 区切りに正規化したうえでのセグメント単位サフィックス一致）で行う。生ファイルの suffix マッチが1件あれば常にそちらを優先し（`Defines` を完全にサポートするため）、無ければマニフェストの `root` に対して同じ suffix マッチを行う。
 
-診断: `TKH0001`/`TKH0002`（HLSL の解析エラー／警告の転写）、`TKH1001`（ファイル未検出）、`TKH1002`（ファイル指定が曖昧）、`TKH1003`（`partial` 修飾子なし）、`TKH1004`（`#pragma kernel` なし）、`TKH1005`（対応する Unity API がないリソース/型）、`TKH1006`（struct パッキング不一致、現状は未発火— cbuffer メンバーに struct 型を許容した時点で再利用する想定。`StructuredBuffer<T>` の要素 struct は 16 バイト境界パッキングの対象外なのでこの診断を出していない）。
+診断: `TKH0001`/`TKH0002`（HLSL の解析エラー／警告の転写）、`TKH1001`（ファイル未検出）、`TKH1002`（ファイル指定が曖昧）、`TKH1003`（`partial` 修飾子なし）、`TKH1004`（`#pragma kernel` なし）、`TKH1005`（対応する Unity API がないリソース/型）、`TKH1006`（struct パッキング不一致、現状は未発火— cbuffer メンバーに struct 型を許容した時点で再利用する想定。`StructuredBuffer<T>` の要素 struct は 16 バイト境界パッキングの対象外なのでこの診断を出していない）、`TKH1007`（マニフェストは見つかったが `Defines` が一致するものがない — §14.6 参照）。
 
 生成コード: `Emit.CodeEmitter` が `Properties`（`Shader.PropertyToID` キャッシュ）、コンストラクタ、カーネルごとの `readonly struct`（`NumThreadsX/Y/Z` 定数、`Set_<Name>` リソース setter、`DispatchThreads`/`DispatchGroups`）、外側レベルの plain global／cbuffer メンバー setter（`Emit.HlslTypeMap` で HLSL 型→C# 型／`ComputeShader.Set*` メソッドへ変換）、`StructuredBuffer<T>` 系列が参照するユーザー struct の `[StructLayout(Sequential)]` 要素構造体を出力する。命名規則は「HLSL 名をそのまま使う」（決定事項どおり）。
 
@@ -448,6 +448,16 @@ Source Generator が `StructuredBuffer<T>` の要素 struct や `cbuffer` メン
 
 ### 14.5 Phase 10: UPM パッケージ
 
-`packages/jp.keigo.tk-hlsl/`（`package.json`, `README.md`, `build.sh`）。DLL 本体と対応する `.meta` は `build.sh` が `dotnet build -c Release` から `Runtime/` に生成するもので、リポジトリにはコミットしていない（`.gitignore` 参照）。`.meta` の GUID は `build.sh` にハードコードされた固定値で、再実行してもアセット ID は変わらない。`TkHLSL.SourceGeneration.dll`/`TkHLSL.dll`/（存在すれば）`System.Memory.dll` には `RoslynAnalyzer` ラベルを付け、全プラットフォームのビルド対象から除外している。
+`Unity/Packages/jp.kosen-ac.kagawa.tk-hlsl/`（`package.json`, `README.md`, `build.sh`）。DLL 本体と対応する `.meta` は `build.sh` が `dotnet build -c Release` から `Runtime/`（と §14.6 の `Editor/`）に生成するもので、`.meta` の GUID は `build.sh` にハードコードされた固定値のため再実行してもアセット ID は変わらない。`TkHLSL.SourceGeneration.dll`/`TkHLSL.dll`/（存在すれば）`System.Memory.dll` には `RoslynAnalyzer` ラベルを付け、全プラットフォームのビルド対象から除外している。
 
-**未検証の残課題**（`packages/jp.keigo.tk-hlsl/README.md` の「Known unknowns」参照）: パッケージ内の `RoslynAnalyzer` ラベル付き DLL が実際に利用者側アセンブリへ適用されるかは、実機の Unity 6 プロジェクトで確認できていない。効かない場合は `Assets/` 直下への直接配置にフォールバックする方針。
+**検証済み**: `RoslynAnalyzer` ラベル付き DLL が実際に利用者側アセンブリへ適用されるかどうかは、実機の Unity 6000.5.4f1 プロジェクトで確認済み — `Library/Bee/artifacts/*.dag/<任意のアセンブリ>.rsp` に `-analyzer:"Packages/jp.kosen-ac.kagawa.tk-hlsl/Runtime/TkHLSL.SourceGeneration.dll"` が、パッケージを利用する asmdef に限らず**プロジェクト内の全アセンブリ**に対して自動的に付与されることを、`Unity.Mathematics.rsp` など無関係なアセンブリの `.rsp` で確認した。`Assets/` 直下への直接配置へのフォールバックは不要と判断。
+
+### 14.6 Phase 11: `csc.rsp` の廃止 — Unity Editor 側での解析結果キャッシュ (`*.additionalfile` マニフェスト)
+
+Phase 10 まではユーザーが `csc.rsp` に `/additionalfile:` を手書きし、対象の `.compute` と `#include` される全ファイルを列挙する必要があった。include クロージャは前処理してみないと分からず、前処理するにはそのファイルが既に AdditionalFile になっている必要がある、という鶏卵問題をユーザーに押し付けていたため、これを Unity Editor 側の `AssetPostprocessor` で解消した。
+
+- 追加した `src/TkHLSL.SourceGeneration/Manifest/ShaderManifest.cs`（`internal`）が `tkhlsl-manifest` 形式（タブ区切り行指向）の唯一の実装で、書き込み側・読み込み側の双方から使う「唯一の真実源」。**シェーダー本文は一切書かない** — kernel／resource／struct／診断のみを構造化して保持し、位置情報は書き込み時点で `path:line:col` まで解決した `loc` テーブルとして埋め込む（`TextSpan` はこのテーブルへの合成キーとして再利用している）。
+- この1ファイルを `src/TkHLSL.Unity.Editor/TkHLSL.Unity.Editor.csproj`（新規、netstandard2.1、`Microsoft.CodeAnalysis`/`UnityEditor` に非依存）へ `<Compile Include>` でリンクし、`TkHLSL` のソース一式（`TkHLSL.dll` は `RoslynAnalyzer` ラベルで Editor でも無効化されているため参照できず、代わりにソースをリンクして独立ビルドしている）と組み合わせて `ShaderManifestBuilder`/`FileSystemIncludeResolver` を実装した。
+- Unity が直接コンパイルするのはパッケージの `Editor/TkHLSLManifestPostprocessor.cs`（`AssetPostprocessor.OnPostprocessAllAssets`）と `Editor/TkHLSLManifestMenu.cs`（`Tools/TkHLSL/Rebuild Shader Manifests`）の2ファイルのみで、`TkHLSL.Unity.Editor.dll` はビルド済み Editor 専用プラグインとして同梱する。Unity の C# コンパイラは `-langversion:9.0` 固定（`Library/Bee/artifacts/*.dag/*.rsp` で確認済み）なので、この2ファイルは C# 9 の範囲に収めている。
+- `PipelineCompute.Compute` は生ファイルの suffix マッチを優先し、無ければマニフェストの `root` を `Defines` の完全一致込みで解決する（§14.4 参照）。`Emit.IEmitLocationResolver` を導入して位置解決を差し替え可能にし、`CodeEmitter`/`PipelineCompute` 双方の診断生成を一本化した。
+- テストは `tests/TkHLSL.SourceGeneration.Tests/ShaderManifestTests.cs`（フォーマットの往復・エスケープ・前方互換）、`tests/TkHLSL.SourceGeneration.Tests/ManifestGeneratorDriverTests.cs`（マニフェスト経路と生ファイル経路の生成コード完全一致、`TKH1001`/`TKH1002`/`TKH1007`）、`tests/TkHLSL.Unity.Editor.Tests/ShaderManifestBuilderTests.cs`（`#include` 解決の各パターン、循環 include、未解決 include）の3プロジェクトに分かれている。

@@ -26,6 +26,11 @@
     <ItemGroup>
         <ProjectReference Include="..\..\src\TkHLSL.SourceGeneration\TkHLSL.SourceGeneration.csproj"/>
         <ProjectReference Include="..\..\src\TkHLSL.Unity\TkHLSL.Unity.csproj"/>
+        <!-- TkHLSL.SourceGeneration.csproj is an analyzer project (IncludeBuildOutput=false), so its
+             own ProjectReference to TkHLSL does not flow transitively — needed directly here for
+             ShaderManifestTests, which exercises TkHLSL.HlslParser against TkHLSL.SourceGeneration's
+             internal ShaderManifest/AdditionalFileIncludeResolver/LineMap (via InternalsVisibleTo). -->
+        <ProjectReference Include="..\..\src\TkHLSL\TkHLSL.csproj"/>
     </ItemGroup>
 
 </Project>

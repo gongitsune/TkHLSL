@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <!-- netstandard2.1: Unity 6's Editor scripting runtime supports it, and it gives Span<T>
+             built in, avoiding the System.Memory package TkHLSL.csproj needs on netstandard2.0. -->
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- This is an ordinary prebuilt Unity Editor plugin DLL (imported with Editor-only platform
+             settings, no RoslynAnalyzer label) — Unity loads the built binary as-is and never
+             recompiles it, so its own LangVersion/TFM are independent of Unity's -langversion:9.0
+             compiler invocation. Only the .cs files copied directly into the package's Editor/ folder
+             (TkHLSLManifestPostprocessor.cs, TkHLSLManifestMenu.cs — which Unity *does* compile
+             itself) are restricted to that C# 9 subset. -->
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageId>TkHLSL.Unity.Editor</PackageId>
+        <Version>0.1.0</Version>
+        <Authors>keigo</Authors>
+        <Description>Unity Editor-side HLSL analysis used by TkHLSLManifestPostprocessor to write
+            *.additionalfile shader manifests: parses a .compute (and its #include closure) with
+            TkHLSL.HlslParser and serializes the result via TkHLSL.SourceGeneration's ShaderManifest
+            format. Deliberately has no UnityEditor/UnityEngine dependency of its own — it is a plain
+            .NET library the package's Editor/ AssetPostprocessor calls into. See
+            docs/IMPLEMENTATION_PLAN.md, "csc.rsp を廃止し..." plan §3.</Description>
+        <PackageTags>hlsl;compute-shader;unity;source-generator</PackageTags>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- TkHLSL.dll itself cannot be referenced here: it is packed with the RoslynAnalyzer label
+             and disabled on every platform (including Editor), so Unity never lets a normal script
+             assembly reference it. Link its sources directly instead — this project becomes its own
+             independent build of the same parser, not a second copy of the same assembly. -->
+        <Compile Include="..\TkHLSL\**\*.cs" Exclude="..\TkHLSL\obj\**\*.cs;..\TkHLSL\bin\**\*.cs"
+                 LinkBase="TkHLSL" />
+        <!-- The manifest format's sole source of truth (see its own doc comment) — linked here
+             unmodified so this writer can never drift from what PipelineCompute reads. -->
+        <Compile Include="..\TkHLSL.SourceGeneration\Manifest\ShaderManifest.cs" LinkBase="Manifest" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="PolySharp" Version="1.16.0">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="TkHLSL.Unity.Editor.Tests" />
+    </ItemGroup>
+
+</Project>

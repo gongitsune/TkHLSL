@@ -21,6 +21,7 @@ public sealed class ComputeShaderBindingGenerator : IIncrementalGenerator
     private const string HlslExtensions2 = ".hlsl";
     private const string HlslExtensions3 = ".cginc";
     private const string HlslExtensions4 = ".hlslinc";
+    private const string ManifestExtension = ".additionalfile";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -29,14 +30,28 @@ public sealed class ComputeShaderBindingGenerator : IIncrementalGenerator
             .Where(t => t is not null)
             .Select((t, _) => t!);
 
-        var files = context.AdditionalTextsProvider
+        var rawFiles = context.AdditionalTextsProvider
             .Where(IsHlslFile)
             .Select(ToAdditionalHlslFile)
             .Collect()
             .Select((arr, _) => new EquatableArray<AdditionalHlslFile>(arr.ToArray()));
 
-        var combined = targets.Combine(files);
-        var generated = combined.Select((input, _) => PipelineCompute.Compute(input));
+        // A '*.additionalfile' manifest is a Unity Editor-produced cache of an already-analyzed
+        // shader (kernels/resources/structs/diagnostics, no HLSL source) — see
+        // docs/IMPLEMENTATION_PLAN.md, "csc.rsp を廃止し..." plan §1. It exists so a consumer never
+        // needs a hand-written csc.rsp for the shader's #include closure. Read the same way as a raw
+        // HLSL AdditionalFile (path + text); PipelineCompute distinguishes the two by which
+        // collection they came in on and parses manifests via ShaderManifest.TryRead instead of
+        // HlslParser.Parse.
+        var manifestFiles = context.AdditionalTextsProvider
+            .Where(IsManifestFile)
+            .Select(ToAdditionalHlslFile)
+            .Collect()
+            .Select((arr, _) => new EquatableArray<AdditionalHlslFile>(arr.ToArray()));
+
+        var combined = targets.Combine(rawFiles).Combine(manifestFiles);
+        var generated = combined.Select((input, _) =>
+            PipelineCompute.Compute((input.Left.Left, input.Left.Right, input.Right)));
 
         context.RegisterSourceOutput(generated, Report);
     }
@@ -106,6 +121,11 @@ public sealed class ComputeShaderBindingGenerator : IIncrementalGenerator
                path.EndsWith(HlslExtensions2, StringComparison.OrdinalIgnoreCase) ||
                path.EndsWith(HlslExtensions3, StringComparison.OrdinalIgnoreCase) ||
                path.EndsWith(HlslExtensions4, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsManifestFile(AdditionalText file)
+    {
+        return file.Path.EndsWith(ManifestExtension, StringComparison.OrdinalIgnoreCase);
     }
 
     private static AdditionalHlslFile ToAdditionalHlslFile(AdditionalText file, CancellationToken cancellationToken)

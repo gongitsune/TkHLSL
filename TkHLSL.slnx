@@ -5,10 +5,12 @@
   <Folder Name="/src/">
     <Project Path="src/TkHLSL.SourceGeneration/TkHLSL.SourceGeneration.csproj" />
     <Project Path="src/TkHLSL.Unity/TkHLSL.Unity.csproj" />
+    <Project Path="src/TkHLSL.Unity.Editor/TkHLSL.Unity.Editor.csproj" />
     <Project Path="src/TkHLSL/TkHLSL.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TkHLSL.SourceGeneration.Tests/TkHLSL.SourceGeneration.Tests.csproj" />
     <Project Path="tests/TkHLSL.Tests/TkHLSL.Tests.csproj" />
+    <Project Path="tests/TkHLSL.Unity.Editor.Tests/TkHLSL.Unity.Editor.Tests.csproj" />
   </Folder>
 </Solution>

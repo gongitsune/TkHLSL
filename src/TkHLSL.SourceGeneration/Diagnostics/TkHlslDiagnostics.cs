@@ -73,6 +73,19 @@ internal static class TkHlslDiagnostics
         Category, DiagnosticSeverity.Warning, true);
 
     /// <summary>
+    ///     A <c>*.additionalfile</c> manifest matched the requested path, but none of its variants was
+    ///     analyzed with the <c>Defines</c> the attribute requested — the manifest pipeline currently
+    ///     only ever produces a no-defines variant (see docs/IMPLEMENTATION_PLAN.md, "csc.rsp を廃止し..."
+    ///     plan §5). Passing the raw <c>.compute</c> (and its includes) as AdditionalFiles instead
+    ///     resolves via the original parse-on-the-fly pipeline, which supports <c>Defines</c> fully.
+    /// </summary>
+    public static readonly DiagnosticDescriptor NoManifestForDefines = new(
+        "TKH1007", "指定された Defines に一致するシェーダーマニフェストが見つかりません",
+        "'{0}' に一致するマニフェストが見つかりましたが、Defines = [{1}] に一致するものがありません。" +
+        "この Defines の組み合わせで生成するには、対象の .compute (と #include ファイル) を直接 AdditionalFiles として渡してください。",
+        Category, DiagnosticSeverity.Error, true);
+
+    /// <summary>
     ///     Every descriptor above, keyed by <see cref="DiagnosticDescriptor.Id" />, for reconstructing a
     ///     <see cref="Diagnostic" /> from a cached <see cref="SourceGeneration.EmitDiagnosticInfo" />.
     /// </summary>
@@ -86,6 +99,7 @@ internal static class TkHlslDiagnostics
             [TypeNotPartial.Id] = TypeNotPartial,
             [NoKernels.Id] = NoKernels,
             [UnmappedResource.Id] = UnmappedResource,
-            [StructPackingMismatch.Id] = StructPackingMismatch
+            [StructPackingMismatch.Id] = StructPackingMismatch,
+            [NoManifestForDefines.Id] = NoManifestForDefines
         };
 }

@@ -14,10 +14,14 @@ namespace TkHLSL.Unity;
 /// </summary>
 /// <remarks>
 ///     The generator resolves <see cref="Path" /> against the project's Roslyn <c>AdditionalFiles</c>
-///     only — it never touches disk itself. In Unity, that means the target <c>.compute</c> (and any
-///     file it <c>#include</c>s) must be listed as an additional file for the compiling assembly,
-///     typically via a <c>csc.rsp</c> next to the assembly's <c>.asmdef</c>
-///     (<c>/additionalfile:Assets/Shaders/Blur.compute</c>).
+///     only — it never touches disk itself. In the <c>TkHLSL.Unity</c> package, a <c>.compute</c> (and
+///     everything it <c>#include</c>s) never needs to be listed manually: the package's Editor-side
+///     importer parses it and writes a structured <c>*.additionalfile</c> manifest to
+///     <c>Assets/TkHLSL.Generated/</c> automatically, which Unity then passes to the compiler as a
+///     Roslyn AdditionalFile on its own. Outside Unity (or for a <see cref="Defines" />-using binding,
+///     which the importer cannot know about — see the package README), the target file and its
+///     includes can instead be passed as raw AdditionalFiles directly
+///     (<c>/additionalfile:Assets/Shaders/Blur.compute</c> in a <c>csc.rsp</c>).
 /// </remarks>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false)]
 public sealed class ComputeShaderBindingAttribute : Attribute
