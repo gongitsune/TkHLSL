@@ -124,6 +124,62 @@ public class GeneratorDriverTests
     }
 
     [Fact]
+    public void GeneratedSource_IntVectorMember_UsesSetInts()
+    {
+        const string source = """
+            #pragma kernel CSMain
+            cbuffer Params { int3 _Size; };
+            RWStructuredBuffer<float> _Out;
+            [numthreads(1,1,1)]
+            void CSMain(uint3 id : SV_DispatchThreadID) { _Out[id.x] = _Size.x; }
+            """;
+
+        var result = GeneratorDriverHarness.Run(UserSource, ("Blur.compute", source));
+        var generated = Assert.Single(result.GeneratedSources).Value;
+
+        Assert.Contains("Set_Size(int x, int y, int z)", generated);
+        Assert.Contains("Shader.SetInts(Properties._Size, x, y, z)", generated);
+    }
+
+    [Fact]
+    public void GeneratedSource_UIntVectorMember_UsesSetIntsWithReinterpretedCast()
+    {
+        const string source = """
+            #pragma kernel CSMain
+            cbuffer Params { uint4 _Mask; };
+            RWStructuredBuffer<float> _Out;
+            [numthreads(1,1,1)]
+            void CSMain(uint3 id : SV_DispatchThreadID) { _Out[id.x] = _Mask.x; }
+            """;
+
+        var result = GeneratorDriverHarness.Run(UserSource, ("Blur.compute", source));
+        var generated = Assert.Single(result.GeneratedSources).Value;
+
+        Assert.Contains("Set_Mask(uint x, uint y, uint z, uint w)", generated);
+        Assert.Contains(
+            "Shader.SetInts(Properties._Mask, unchecked((int)x), unchecked((int)y), unchecked((int)z), unchecked((int)w))",
+            generated);
+    }
+
+    [Fact]
+    public void GeneratedSource_IntVectorArrayMember_ReportsTkh1005()
+    {
+        const string source = """
+            #pragma kernel CSMain
+            cbuffer Params { int3 _Sizes[4]; };
+            RWStructuredBuffer<float> _Out;
+            [numthreads(1,1,1)]
+            void CSMain(uint3 id : SV_DispatchThreadID) { _Out[id.x] = _Sizes[0].x; }
+            """;
+
+        var result = GeneratorDriverHarness.Run(UserSource, ("Blur.compute", source));
+        var generated = Assert.Single(result.GeneratedSources).Value;
+
+        Assert.DoesNotContain("Set_Sizes", generated);
+        Assert.Contains(result.Diagnostics, d => d.Id == "TKH1005");
+    }
+
+    [Fact]
     public void GeneratedSource_StructuredBufferOfUserStruct_EmitsElementStruct()
     {
         const string source = """
