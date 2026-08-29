@@ -221,6 +221,40 @@ internal static class CodeEmitter
         var setterName = SetterName(name);
         var propertyName = PropertyName(name);
 
+        if (mapping.ComponentCount > 0)
+        {
+            // A component-wise mapping (int2/3/4, uint2/3/4 → SetInts) has no ComputeShader array
+            // overload to fall back on, so an array of these is still unsupported — report TKH1005
+            // instead of emitting a setter, same as an unmapped type would.
+            if (arrayLength is not null)
+            {
+                diagnostics.Add(MakeDiagnostic("TKH1005", locationResolver, location, name, hlslType));
+                return;
+            }
+
+            sb.Append(indent).Append("public void ").Append(setterName).Append('(');
+            for (var c = 0; c < mapping.ComponentCount; c++)
+            {
+                if (c > 0) sb.Append(", ");
+                sb.Append(mapping.CSharpType).Append(' ').Append(ComponentNames[c]);
+            }
+
+            sb.Append(")\n");
+            sb.Append(indent).Append("    => Shader.").Append(mapping.SetterMethod).Append("(Properties.")
+                .Append(propertyName);
+            for (var c = 0; c < mapping.ComponentCount; c++)
+            {
+                sb.Append(", ");
+                if (mapping.ComponentCast is { } cast)
+                    sb.Append("unchecked((").Append(cast).Append(')').Append(ComponentNames[c]).Append(')');
+                else
+                    sb.Append(ComponentNames[c]);
+            }
+
+            sb.Append(");\n\n");
+            return;
+        }
+
         if (arrayLength is null)
         {
             sb.Append(indent).Append("public void ").Append(setterName).Append('(').Append(mapping.CSharpType)
@@ -236,6 +270,8 @@ internal static class CodeEmitter
                 .Append(propertyName).Append(", values);\n\n");
         }
     }
+
+    private static readonly string[] ComponentNames = ["x", "y", "z", "w"];
 
     private static void EmitConstantBufferSetter(StringBuilder sb, string indent, ResourceBinding cbuffer)
     {

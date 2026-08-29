@@ -35,6 +35,7 @@ internal static class UnityStub
                 public void SetFloatArray(int id, float[] values) { }
                 public void SetInt(int id, int value) { }
                 public void SetIntArray(int id, int[] values) { }
+                public void SetInts(int id, params int[] values) { }
                 public void SetBool(int id, bool value) { }
                 public void SetVector(int id, Vector4 value) { }
                 public void SetVectorArray(int id, Vector4[] values) { }
